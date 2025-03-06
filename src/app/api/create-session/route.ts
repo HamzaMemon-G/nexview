@@ -38,7 +38,7 @@ export async function POST(req: Request) {
 
         await existingUser.save();
 
-        return NextResponse.json({ message: "Session created successfully" }, { status: 201 });
+        return NextResponse.json({ message: "Session created successfully" }, { status: 200 });
     } catch (error) {
         console.error("Error saving session:", error);
         return NextResponse.json({ message: "Internal server error" }, { status: 500 });

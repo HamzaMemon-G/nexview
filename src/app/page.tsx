@@ -7,7 +7,7 @@ import { ModeToggle } from "@/components/modetoggle";
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Home as HomeIcon, Clock, ThumbsUp, PlaySquare, Menu, Bell, PlusCircle, Calendar, Trash2 } from "lucide-react";
+import { Search, Home as HomeIcon, Clock, ThumbsUp, PlaySquare, Menu, Bell, PlusCircle, Calendar, Trash2, Bookmark } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -48,7 +48,7 @@ export default function Home() {
     duration?: string;
     isShort: boolean;
   }
-  
+
   interface Session {
     id: string;
     name: string;
@@ -69,7 +69,7 @@ export default function Home() {
   const [isPaginationLoading, setIsPaginationLoading] = React.useState(false);
   const observerRef = React.useRef<IntersectionObserver | null>(null);
   const loadMoreTriggerRef = React.useRef<HTMLDivElement | null>(null);
-  
+
   // Session management states
   const [sessions, setSessions] = React.useState<Session[]>([]);
   const [sessionDialogOpen, setSessionDialogOpen] = React.useState(false);
@@ -88,18 +88,18 @@ export default function Home() {
 
   // Load sessions from localStorage with a flag to track initial load
   const initialLoadRef = React.useRef(true);
-  
+
   // Load sessions from localStorage on initial render
   React.useEffect(() => {
     const savedSessions = localStorage.getItem('nexview-sessions');
     if (savedSessions) {
       setSessions(JSON.parse(savedSessions));
     }
-    
+
     const lastSelectedSession = localStorage.getItem('nexview-selected-session');
     if (lastSelectedSession) {
       setSelectedSessionId(lastSelectedSession);
-      
+
       // Set search query to the selected session name
       const session = JSON.parse(savedSessions || '[]').find(
         (s: Session) => s.id === lastSelectedSession
@@ -108,18 +108,18 @@ export default function Home() {
         setSearchQuery(session.name);
       }
     }
-    
+
     // After initial load, reset the flag
     initialLoadRef.current = false;
   }, []);
-  
+
   // Save sessions to localStorage whenever they change
   React.useEffect(() => {
     if (sessions.length > 0) {
       localStorage.setItem('nexview-sessions', JSON.stringify(sessions));
     }
   }, [sessions]);
-  
+
   // Save selected session to localStorage
   React.useEffect(() => {
     if (selectedSessionId) {
@@ -142,7 +142,7 @@ export default function Home() {
   // Helper function to create a new session
   const createNewSession = async () => {
     if (newSessionName.trim() === "" || newSessionDailyTime.trim() === "") return;
-    
+
     // Create session locally first
     const localSessionId = `session-${Date.now()}`;
     const newSession: Session = {
@@ -152,17 +152,17 @@ export default function Home() {
       endDate: newSessionEndDate.toISOString(),
       createdAt: new Date().toISOString()
     };
-    
+
     setSessions(prev => [...prev, newSession]);
     setSelectedSessionId(localSessionId);
     setSearchQuery(newSessionName);
     setSessionDialogOpen(false);
-    
+
     // Reset form fields
     setNewSessionName("");
     setNewSessionDailyTime("1 hr");
     setNewSessionEndDate(addDays(new Date(), 7));
-    
+
     if (user) {
       try {
         const response = await axios.post('/api/create-session', {
@@ -171,15 +171,15 @@ export default function Home() {
         });
 
         console.log(response)
-        
+
         if (response.status === 200) {
           const data = await response.data;
           if (data.success && data.sessionId) {
             // Update the local session with the MongoDB ID
-            const updatedSessions = sessions.map(s => 
+            const updatedSessions = sessions.map(s =>
               s.id === localSessionId ? { ...s, id: data.sessionId } : s
             );
-            
+
             setSessions(updatedSessions);
             setSelectedSessionId(data.sessionId);
             localStorage.setItem('currentSessionId', data.sessionId);
@@ -192,7 +192,7 @@ export default function Home() {
       }
     }
   };
-  
+
   // Helper function to format session time frame for display
   const formatTimeFrame = (startTime: string, endTime: string) => {
     return `${startTime} - ${endTime} daily`;
@@ -203,7 +203,7 @@ export default function Home() {
     const endDate = new Date(endDateStr);
     const today = new Date();
     const daysRemaining = differenceInDays(endDate, today);
-    
+
     if (daysRemaining <= 0) return "Ended";
     if (daysRemaining === 1) return "1 day";
     if (daysRemaining < 7) return `${daysRemaining} days`;
@@ -219,19 +219,19 @@ export default function Home() {
     if (hourMatch) {
       return parseFloat(hourMatch[1]) * 60;
     }
-    
+
     // Check for minutes
     const minMatch = timeStr.match(/(\d+)\s*min/);
     if (minMatch) {
       return parseInt(minMatch[1]);
     }
-    
+
     // Default fallback - if format is not recognized, assume it's hours
     const numMatch = timeStr.match(/(\d+(\.\d+)?)/);
     if (numMatch) {
       return parseFloat(numMatch[1]) * 60;
     }
-    
+
     return 60; // Default to 60 minutes if parsing fails
   };
 
@@ -243,11 +243,11 @@ export default function Home() {
         // Parse the daily time to minutes
         const sessionMinutes = parseTimeToMinutes(currentSession.dailyTime);
         setTotalSessionTime(sessionMinutes);
-        
+
         // Check if we have a lastStarted timestamp, otherwise set it now
         if (!currentSession.lastStarted || isNewDay(currentSession.lastStarted)) {
-          const updatedSessions = sessions.map(s => 
-            s.id === selectedSessionId 
+          const updatedSessions = sessions.map(s =>
+            s.id === selectedSessionId
               ? { ...s, lastStarted: new Date().toISOString() }
               : s
           );
@@ -267,7 +267,7 @@ export default function Home() {
   // Update session elapsed time periodically
   React.useEffect(() => {
     if (!selectedSessionId) return;
-    
+
     const timer = setInterval(() => {
       const currentSession = sessions.find(s => s.id === selectedSessionId);
       if (currentSession?.lastStarted) {
@@ -277,7 +277,7 @@ export default function Home() {
         setSessionTimeElapsed(Math.min(elapsedMinutes, totalSessionTime));
       }
     }, 30000); // Update every 30 seconds
-    
+
     return () => clearInterval(timer);
   }, [selectedSessionId, sessions, totalSessionTime]);
 
@@ -285,9 +285,9 @@ export default function Home() {
   const isNewDay = (timestamp: string): boolean => {
     const date = new Date(timestamp);
     const today = new Date();
-    return date.getDate() !== today.getDate() || 
-           date.getMonth() !== today.getMonth() || 
-           date.getFullYear() !== today.getFullYear();
+    return date.getDate() !== today.getDate() ||
+      date.getMonth() !== today.getMonth() ||
+      date.getFullYear() !== today.getFullYear();
   };
 
   // Format elapsed time for display
@@ -316,12 +316,41 @@ export default function Home() {
       setPage(1);
       fetchYoutubeVideos(session.name);
     }
+    const currentSession = localStorage.getItem('nexview-selected-session')
+    if (!currentSession) {
+      setSessionSelectionOpen(true);
+    }
   };
 
   // Add a function to delete a session
-  const deleteSession = (sessionId: string) => {
+  const deleteSession = async (sessionId: string) => {
     setSessions(prev => prev.filter(session => session.id !== sessionId));
     localStorage.removeItem(sessionId);
+    localStorage.removeItem('nexview-selected-session');
+    localStorage.removeItem('likedVideos');
+    localStorage.removeItem('history');
+    localStorage.removeItem('savedVideos');
+    const sessions = localStorage.getItem('nexview-sessions');
+    if (sessions?.includes(sessionId)) {
+      const savedSessions = JSON.parse(localStorage.getItem('nexview-sessions') || '[]');
+      const updatedSessions = savedSessions.filter((s: Session) => s.id !== sessionId);
+      localStorage.setItem('nexview-sessions', JSON.stringify(updatedSessions));
+    }
+    if (selectedSessionId === sessionId) {
+      setSelectedSessionId(null);
+      setSearchQuery("");
+    }
+    try {
+      console.log(user, sessionId);
+      const response = await axios.post('/api/delete-session', {
+        email: user,
+        sessionId: sessionId
+      });
+      console.log(response.data.message);
+    } catch (error) {
+      console.error('Error deleting session:', error);
+    }
+
     if (selectedSessionId === sessionId) {
       setSelectedSessionId(null);
       setSearchQuery("");
@@ -330,13 +359,13 @@ export default function Home() {
 
   // Revised useEffect to prevent unexpected popups
   React.useEffect(() => {
-    // Only show dialogs on first load if no session is selected and search is empty
-    if (initialLoadRef.current && !selectedSessionId && searchQuery === "") {
+    if (initialLoadRef.current && !selectedSessionId) {
       if (sessions.length === 0) {
         setSessionDialogOpen(true);
       } else {
         setSessionSelectionOpen(true);
       }
+
       initialLoadRef.current = false;
     }
   }, [sessions.length, selectedSessionId, searchQuery]);
@@ -366,7 +395,7 @@ export default function Home() {
       setVideos([]);
       return;
     }
-    
+
     if (currentPage === 1) {
       setIsLoading(true);
       setHasMore(true);
@@ -378,7 +407,7 @@ export default function Home() {
       const API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
       const maxResults = 12; // Number of results per page
       const pageToken = currentPage > 1 ? `&pageToken=${localStorage.getItem(`pageToken_${query}_${currentPage - 1}`)}` : '';
-      
+
       const response = await fetch(`https://youtube.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=${maxResults}&q=${query}${pageToken}&key=${API_KEY}`);
       const data = await response.json();
       console.log(data);
@@ -528,10 +557,51 @@ export default function Home() {
     ].filter(video => !video.isShort);
   };
 
+  // Explicitly handle search submission
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (searchQuery.trim()) {
+      const currentSessionName = getCurrentSessionName();
+      let finalQuery = searchQuery;
+
+      // If we have a selected session, always prefix the search with the session name
+      // to keep searches within the session context
+      if (selectedSessionId && currentSessionName) {
+        // Check if the search query already includes the session name to avoid duplication
+        if (!searchQuery.toLowerCase().includes(currentSessionName.toLowerCase())) {
+          finalQuery = `${currentSessionName} ${searchQuery}`;
+        }
+      }
+
+      fetchYoutubeVideos(finalQuery);
+      setSearchQuery(finalQuery);
+    } else if (!selectedSessionId) {
+      // Only show session dialogs if no session is currently selected
+      if (sessions.length > 0) {
+        setSessionSelectionOpen(true);
+      } else {
+        setSessionDialogOpen(true);
+      }
+    }
+    setShowSearch(false);
+  };
+
   React.useEffect(() => {
     if (searchQuery.trim()) {
       setPage(1);
-      fetchYoutubeVideos(searchQuery);
+
+      // Apply the same session context logic here for consistency
+      const currentSessionName = getCurrentSessionName();
+      let finalQuery = searchQuery;
+
+      if (selectedSessionId && currentSessionName &&
+        !searchQuery.toLowerCase().includes(currentSessionName.toLowerCase())) {
+        finalQuery = `${currentSessionName} ${searchQuery}`;
+        // Don't update searchQuery here to avoid infinite loop
+      }
+
+      fetchYoutubeVideos(finalQuery);
 
       // Clear localStorage tokens when changing search query
       const localStorageKeys = Object.keys(localStorage);
@@ -552,38 +622,54 @@ export default function Home() {
     };
   }, [fetchYoutubeVideos, searchQuery]);
 
-  // Explicitly handle empty search submission
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      fetchYoutubeVideos(searchQuery);
-    } else if (!selectedSessionId) {
-      // Only show session dialogs if no session is currently selected
-      if (sessions.length > 0) {
-        setSessionSelectionOpen(true);
-      } else {
-        setSessionDialogOpen(true);
-      }
-    }
-    setShowSearch(false);
+  // Helper function to get the current session name
+  const getCurrentSessionName = (): string => {
+    if (!selectedSessionId) return "";
+    const currentSession = sessions.find(s => s.id === selectedSessionId);
+    return currentSession?.name || "";
   };
 
+  // Modify the onClick handler for the search button
+  const handleSearchButtonClick = () => {
+    setShowSearch(true);
+    // Clear the search input when opening the search box
+    setSearchQuery("");
+  };
 
   const getCurrentSession = () => {
     return sessions.find(s => s.id === selectedSessionId);
   };
 
+  // Add a function to clear search and return to session content
+  const handleClearSearch = () => {
+    // Get the current session name if a session is selected
+    const currentSessionName = getCurrentSessionName();
+
+    // If we have a selected session, revert to showing session content
+    if (selectedSessionId && currentSessionName) {
+      setSearchQuery(currentSessionName);
+      fetchYoutubeVideos(currentSessionName);
+    } else {
+      // If no session is selected, just clear the search
+      setSearchQuery("");
+      setVideos([]);
+    }
+
+    // Close the search UI
+    setShowSearch(false);
+  };
+
   return (
     <main className="flex min-h-screen flex-col bg-background pb-20">
       {/* Header */}
-      <div className="fixed top-0 left-0 right-0 h-16 border-b bg-background flex items-center px-4 z-50">
-        <div className="flex items-center w-full">
-          <Link href="/" className="flex items-center mr-10">
+      <div className="fixed top-0 left-0 right-0 w-full h-16 border-b bg-background flex items-center justify-between px-4 z-50">
+        <div className="flex items-center">
+          <Link href="/" className="flex items-center mr-6">
             <Image src="/nexlogo.png" alt="Nexview" width={40} height={24} />
           </Link>
         </div>
 
-        <div className="flex items-center space-x-4 ml-4">
+        <div className="flex items-center space-x-4">
           <Button variant="ghost" size="icon">
             <Bell className="h-5 w-5" />
           </Button>
@@ -597,16 +683,16 @@ export default function Home() {
 
       {/* Main Content */}
       <div className="flex-1 pt-16 px-6">
-        
+
         {/* Redesigned Session Info Box with Progress Bar */}
         {selectedSessionId && (
           <div className="mb-6 mt-4 p-4 bg-muted rounded-lg">
             <div>
               <h3 className="text-lg font-medium">{getCurrentSession()?.name}</h3>
               <div className="mt-2 mb-3">
-                <Progress 
-                  value={sessionTimeElapsed / totalSessionTime * 100} 
-                  className="h-2" 
+                <Progress
+                  value={sessionTimeElapsed / totalSessionTime * 100}
+                  className="h-2"
                 />
               </div>
               <div className="flex justify-between items-center text-sm text-muted-foreground">
@@ -639,7 +725,7 @@ export default function Home() {
               href={`/video/${video.id}`}
               key={video.uniqueId} // Use uniqueId instead of id for the key prop
             >
-              <Card className="cursor-pointer border-none shadow-none hover:shadow-md transition-shadow duration-300">
+              <Card className="cursor-pointer p-2 bg-transparent border-none shadow-none hover:shadow-md transition-shadow duration-300">
                 <CardContent className="p-0">
                   <div className="aspect-video relative rounded-lg overflow-hidden mb-2">
                     <Image
@@ -679,8 +765,8 @@ export default function Home() {
         </div>
 
         {/* Intersection Observer Trigger Element */}
-        <div 
-          ref={loadMoreTriggerRef} 
+        <div
+          ref={loadMoreTriggerRef}
           className="h-20 flex items-center justify-center w-full my-4"
         >
           {isPaginationLoading && (
@@ -713,7 +799,7 @@ export default function Home() {
                   className="col-span-3"
                 />
               </div>
-              
+
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="daily-time" className="text-right">
                   Daily Time
@@ -727,7 +813,7 @@ export default function Home() {
                   />
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label className="text-right">
                   End Date
@@ -757,8 +843,8 @@ export default function Home() {
               </div>
             </div>
             <DialogFooter>
-              <Button 
-                onClick={createNewSession} 
+              <Button
+                onClick={createNewSession}
                 disabled={!newSessionName.trim() || !newSessionDailyTime.trim()}
               >
                 Create Session
@@ -787,9 +873,9 @@ export default function Home() {
                         {session.dailyTime} daily • {formatDuration(session.endDate)}
                       </div>
                     </Label>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       className="text-destructive hover:text-destructive/80"
                       onClick={(e) => {
                         e.stopPropagation(); // Prevent radio selection when deleting
@@ -801,8 +887,8 @@ export default function Home() {
                   </div>
                 ))}
               </RadioGroup>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full mt-4 flex items-center justify-center gap-2"
                 onClick={() => {
                   setSessionSelectionOpen(false);
@@ -825,14 +911,42 @@ export default function Home() {
           >
             {/* Search form and navigation buttons */}
             {showSearch ? (
-              <form onSubmit={handleSearch} className="flex w-full px-2 animate-fadeIn">
+              <form onSubmit={handleSearch} className="flex w-full px-2 animate-fadeIn relative">
                 <Input
-                  placeholder="Search topic"
-                  className="rounded-full border focus:ring-2 focus:ring-primary w-full"
+                  placeholder={selectedSessionId ? `Search within ${getCurrentSessionName()}...` : "Search topic"}
+                  className="rounded-full border focus:ring-2 focus:ring-primary w-full pr-12"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   autoFocus
                 />
+                {/* Add clear search button */}
+                <div className="absolute right-2 top-0 h-full flex items-center gap-1">
+                  {/* Clear button - only show when there's text or we're not showing the base session */}
+                  {(searchQuery.trim() !== getCurrentSessionName() && searchQuery.trim() !== "") && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700"
+                      onClick={handleClearSearch}
+                    >
+                      <span className="sr-only">Clear search</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    </Button>
+                  )}
+                  <Button
+                    type="submit"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                  >
+                    <span className="sr-only">Search</span>
+                    <Search className="h-4 w-4" />
+                  </Button>
+                </div>
               </form>
             ) : (
               <>
@@ -840,7 +954,7 @@ export default function Home() {
                   <HomeIcon className="h-5 w-5" />
                   <span className="text-xs mt-1">Home</span>
                 </Link>
-                
+
                 {/* Sessions dropdown menu */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -852,15 +966,15 @@ export default function Home() {
                   <DropdownMenuContent align="center" className="w-56">
                     <DropdownMenuLabel>Manage Sessions</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    
+
                     {sessions.length > 0 ? (
                       <>
                         {sessions.map((session) => (
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             key={session.id}
                             className="flex justify-between items-center cursor-pointer"
                           >
-                            <div 
+                            <div
                               className="flex-1"
                               onClick={() => {
                                 handleSessionSelect(session.id);
@@ -871,9 +985,9 @@ export default function Home() {
                                 {session.dailyTime} daily • {formatDuration(session.endDate)}
                               </div>
                             </div>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               className="text-destructive hover:text-destructive/80"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -891,7 +1005,7 @@ export default function Home() {
                         No sessions yet
                       </div>
                     )}
-                    
+
                     <DropdownMenuItem
                       className="cursor-pointer justify-center text-primary"
                       onClick={() => setSessionDialogOpen(true)}
@@ -901,18 +1015,23 @@ export default function Home() {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                
-                <Link href="/" className="flex flex-col items-center px-5 py-1">
+
+                <Link href="/saved" className="flex flex-col items-center px-5 py-1">
+                  <Bookmark className="h-5 w-5" />
+                  <span className="text-xs mt-1">Saved</span>
+                </Link>
+
+                <Link href="/history" className="flex flex-col items-center px-5 py-1">
                   <Clock className="h-5 w-5" />
                   <span className="text-xs mt-1">History</span>
                 </Link>
-                <Link href="/" className="flex flex-col items-center px-5 py-1">
+                <Link href="/likes" className="flex flex-col items-center px-5 py-1">
                   <ThumbsUp className="h-5 w-5" />
                   <span className="text-xs mt-1">Liked</span>
                 </Link>
                 <div
                   className="flex flex-col items-center px-5 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-transform duration-200 hover:scale-110"
-                  onClick={() => setShowSearch(true)}
+                  onClick={handleSearchButtonClick}
                 >
                   <Search className="h-5 w-5" />
                   <span className="text-xs mt-1">Search</span>

@@ -226,7 +226,6 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
             onError: handlePlayerError,
           }
         });
-        handleHistory();
       } catch (error) {
         console.error("Error initializing YouTube player:", error);
         handlePlayerError();
@@ -242,7 +241,6 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
       };
     }
     
-    // Set a timeout to fall back to iframe if player doesn't initialize
     const playerTimeout = setTimeout(() => {
       if ((isBuffering || playerLoading) && !playerReady && embedMode === 'api') {
         console.log("Player initialization timeout, switching to iframe mode");
@@ -419,7 +417,8 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
         if (isLiked) {
           const response = await axios.post('/api/video-handle', {
             user,
-            sessionid: sessionId,
+            sessionId: sessionId,
+            videoId: videoId,
             action: 'unlike'
           });
           if (response.status === 200) {
@@ -428,7 +427,8 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
         } else {
           const response = await axios.post('/api/video-handle', {
             user,
-            sessionid: sessionId,
+            sessionId: sessionId,
+            videoId: videoId,
             action: 'like'
           });
           if (response.status === 200) {
@@ -438,7 +438,8 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
           if (isDisliked) {
             const response = await axios.post('/api/video-handle', {
               user,
-              sessionid: sessionId,
+              sessionId: sessionId,
+              videoId: videoId,
               action: 'undislike'
             });
             if (response.status === 200) {
@@ -493,7 +494,8 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
         if (isDisliked) {
           const response = await axios.post('/api/video-handle', {
             user,
-            sessionid: sessionId,
+            sessionId: sessionId,
+            videoId: videoId,
             action: 'undislike'
           });
           if (response.status === 200) {
@@ -502,7 +504,8 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
         } else {
           const response = await axios.post('/api/video-handle', {
             user,
-            sessionid: sessionId,
+            sessionId: sessionId,
+            videoId: videoId,
             action: 'dislike'
           });
 
@@ -514,7 +517,8 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
           if (isLiked) {
             const response = await axios.post('/api/video-handle', {
               user,
-              sessionid: sessionId,
+              sessionId: sessionId,
+              videoId: videoId,
               action: 'unlike'
             });
 
@@ -569,7 +573,8 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
         if (isSaved) {
           const response = await axios.post('/api/video-handle', {
             user,
-            sessionid: sessionId,
+            sessionId: sessionId,
+            videoId: videoId,
             action: 'unsave'
           });
           if (response.status === 200) {
@@ -578,7 +583,8 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
         } else {
           const response = await axios.post('/api/video-handle', {
             user,
-            sessionid: sessionId,
+            sessionId: sessionId,
+            videoId: videoId,
             action: 'save'
           });
           if (response.status === 200) {
@@ -615,11 +621,14 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
   };
 
   const handleHistory = async () => {
+    console.log("Adding to history");
+    console.log(isLoggedIn, user, sessionId);
     if (isLoggedIn && user && sessionId) {
       try {
         const response = await axios.post('/api/video-handle', {
           user,
-          sessionid: sessionId,
+          sessionId: sessionId,
+          videoId: videoId,
           action: 'history'
         });
         if (response.status === 200) {
@@ -723,7 +732,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
   // Enhanced iframe blocker that works in fullscreen
   useEffect(() => {
     if (embedMode === 'iframe' && iframeRef.current) {
-      // Try to access iframe content when possible
+      handleHistory();
       try {
         const interceptClicks = () => {
           const iframe = iframeRef.current;
@@ -757,16 +766,20 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
                 bottom: 0;
                 width: 180px; 
                 height: 80px;
-                z-index: 9999;
+                z-index: 10;
                 background: transparent;
                 pointer-events: auto;
-                display: none;
-              }
-              
-              /* Show blocker in fullscreen */
-              :fullscreen .yt-blocker-fullscreen {
                 display: block;
               }
+
+              .ytp-pause-overlay {
+                display: none !important;
+                }
+              
+              // /* Show blocker in fullscreen */
+              // :fullscreen .yt-blocker-fullscreen {
+              //   display: block;
+              // }
               
               /* More aggressive CSS for iframe */
               iframe.youtube-nocookie-embed {
@@ -794,16 +807,16 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
   return (
     <main className="flex min-h-screen flex-col bg-background">
       {/* Header */}
-      <div className="fixed top-0 left-0 right=0 h-16 border-b bg-background flex items-center px-4 z-50">
-        <Button variant="ghost" size="icon" className="mr-2" onClick={() => router.back()}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        
-        <Link href="/" className="flex items-center mr-10">
-          <Image src="/nexview.png" alt="Nexview" width={120} height={32} />
-        </Link>
-        
-        <div className="flex-1"></div>
+      <div className="fixed top-0 left-0 right-0 w-full h-16 border-b bg-background flex items-center justify-between px-4 z-50">
+        <div className="flex items-center">
+          <Button variant="ghost" size="icon" className="mr-2" onClick={() => router.back()}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          
+          <Link href="/" className="flex items-center mr-6">
+            <Image src="/nexview.png" alt="Nexview" width={120} height={32} />
+          </Link>
+        </div>
         
         <div className="flex items-center space-x-4">
           <ModeToggle />

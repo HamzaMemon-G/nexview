@@ -12,7 +12,7 @@ export default function Signin() {
         <div className="flex items-center justify-center min-h-screen bg-gray-50/50">
             <Card className="w-full max-w-md mx-4 shadow-lg">
                 <CardHeader className="p-0 text-center flex items-center justify-center">
-                    <Image src='/nexview.png' width={150} height={150} alt={"NexView"} className="brightness-0"></Image>
+                    <Image src='/nexview.png' width={150} height={150} alt={"NexView"} className="dark:brightness-100"></Image>
                 </CardHeader>
                 <CardContent>
                     <form className="space-y-6">

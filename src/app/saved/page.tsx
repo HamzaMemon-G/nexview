@@ -53,7 +53,6 @@ export default function SavedVideos() {
                 },
             });
 
-            console.log("User data:", user.data);
 
             // Find the selected session
             const selectedSession = user.data.user.sessions.find(

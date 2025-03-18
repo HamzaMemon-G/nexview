@@ -19,7 +19,6 @@ export const authOptions: NextAuthOptions  = {
     ],
     callbacks: {
         async signIn({ user, account }) {
-            console.log(account);
             await dbConnect();
             try {
                 if (account?.provider === "google") {

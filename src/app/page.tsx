@@ -32,7 +32,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
-import { getSession } from "next-auth/react";
+import { getSession, signOut } from "next-auth/react";
 import axios from "axios"
 
 export default function Home() {
@@ -89,7 +89,6 @@ export default function Home() {
   // Load sessions from localStorage with a flag to track initial load
   const initialLoadRef = React.useRef(true);
 
-  // Load sessions from localStorage on initial render
   React.useEffect(() => {
     const savedSessions = localStorage.getItem('nexview-sessions');
     if (savedSessions) {
@@ -100,7 +99,6 @@ export default function Home() {
     if (lastSelectedSession) {
       setSelectedSessionId(lastSelectedSession);
 
-      // Set search query to the selected session name
       const session = JSON.parse(savedSessions || '[]').find(
         (s: Session) => s.id === lastSelectedSession
       );
@@ -109,25 +107,21 @@ export default function Home() {
       }
     }
 
-    // After initial load, reset the flag
     initialLoadRef.current = false;
   }, []);
 
-  // Save sessions to localStorage whenever they change
   React.useEffect(() => {
     if (sessions.length > 0) {
       localStorage.setItem('nexview-sessions', JSON.stringify(sessions));
     }
   }, [sessions]);
 
-  // Save selected session to localStorage
   React.useEffect(() => {
     if (selectedSessionId) {
       localStorage.setItem('nexview-selected-session', selectedSessionId);
     }
   }, [selectedSessionId]);
 
-  // Load user from localStorage
   React.useEffect(() => {
     const fetchSession = async () => {
       const session = await getSession();
@@ -139,11 +133,9 @@ export default function Home() {
     fetchSession();
   }, []);
 
-  // Helper function to create a new session
   const createNewSession = async () => {
     if (newSessionName.trim() === "" || newSessionDailyTime.trim() === "") return;
 
-    // Create session locally first
     const localSessionId = `session-${Date.now()}`;
     const newSession: Session = {
       id: localSessionId,
@@ -158,7 +150,6 @@ export default function Home() {
     setSearchQuery(newSessionName);
     setSessionDialogOpen(false);
 
-    // Reset form fields
     setNewSessionName("");
     setNewSessionDailyTime("1 hr");
     setNewSessionEndDate(addDays(new Date(), 7));
@@ -193,12 +184,10 @@ export default function Home() {
     }
   };
 
-  // Helper function to format session time frame for display
   const formatTimeFrame = (startTime: string, endTime: string) => {
     return `${startTime} - ${endTime} daily`;
   };
 
-  // Helper function to format session duration for display
   const formatDuration = (endDateStr: string) => {
     const endDate = new Date(endDateStr);
     const today = new Date();
@@ -212,39 +201,32 @@ export default function Home() {
     return `${Math.floor(daysRemaining / 365)} years`;
   };
 
-  // Helper function to parse time strings like "1 hr", "30 min", "1.5 hr", etc. to minutes
   const parseTimeToMinutes = (timeStr: string): number => {
-    // Check for hours
     const hourMatch = timeStr.match(/(\d+(\.\d+)?)\s*hr/);
     if (hourMatch) {
       return parseFloat(hourMatch[1]) * 60;
     }
 
-    // Check for minutes
-    const minMatch = timeStr.match(/(\d+)\s*min/);
+   const minMatch = timeStr.match(/(\d+)\s*min/);
     if (minMatch) {
       return parseInt(minMatch[1]);
     }
 
-    // Default fallback - if format is not recognized, assume it's hours
     const numMatch = timeStr.match(/(\d+(\.\d+)?)/);
     if (numMatch) {
       return parseFloat(numMatch[1]) * 60;
     }
 
-    return 60; // Default to 60 minutes if parsing fails
+    return 60;
   };
 
-  // Update session progress on session selection
   React.useEffect(() => {
     if (selectedSessionId) {
       const currentSession = sessions.find(s => s.id === selectedSessionId);
       if (currentSession) {
-        // Parse the daily time to minutes
         const sessionMinutes = parseTimeToMinutes(currentSession.dailyTime);
         setTotalSessionTime(sessionMinutes);
 
-        // Check if we have a lastStarted timestamp, otherwise set it now
         if (!currentSession.lastStarted || isNewDay(currentSession.lastStarted)) {
           const updatedSessions = sessions.map(s =>
             s.id === selectedSessionId
@@ -254,7 +236,6 @@ export default function Home() {
           setSessions(updatedSessions);
           setSessionTimeElapsed(0);
         } else {
-          // Calculate elapsed time since session started today
           const startTime = new Date(currentSession.lastStarted);
           const now = new Date();
           const elapsedMinutes = (now.getTime() - startTime.getTime()) / (1000 * 60);
@@ -264,7 +245,6 @@ export default function Home() {
     }
   }, [selectedSessionId, sessions]);
 
-  // Update session elapsed time periodically
   React.useEffect(() => {
     if (!selectedSessionId) return;
 
@@ -276,12 +256,11 @@ export default function Home() {
         const elapsedMinutes = (now.getTime() - startTime.getTime()) / (1000 * 60);
         setSessionTimeElapsed(Math.min(elapsedMinutes, totalSessionTime));
       }
-    }, 30000); // Update every 30 seconds
+    }, 30000);
 
     return () => clearInterval(timer);
   }, [selectedSessionId, sessions, totalSessionTime]);
 
-  // Helper to check if a timestamp is from a different day
   const isNewDay = (timestamp: string): boolean => {
     const date = new Date(timestamp);
     const today = new Date();
@@ -290,7 +269,6 @@ export default function Home() {
       date.getFullYear() !== today.getFullYear();
   };
 
-  // Format elapsed time for display
   const formatElapsedTime = (minutes: number): string => {
     if (minutes < 60) {
       return `${Math.floor(minutes)} min`;
@@ -300,13 +278,11 @@ export default function Home() {
     return remainingMinutes > 0 ? `${hours} hr ${remainingMinutes} min` : `${hours} hr`;
   };
 
-  // Format remaining time for display
   const formatRemainingTime = (totalMinutes: number, elapsedMinutes: number): string => {
     const remaining = Math.max(0, totalMinutes - elapsedMinutes);
     return formatElapsedTime(remaining);
   };
 
-  // Handler for session selection
   const handleSessionSelect = (sessionId: string) => {
     setSelectedSessionId(sessionId);
     const session = sessions.find(s => s.id === sessionId);
@@ -322,7 +298,6 @@ export default function Home() {
     }
   };
 
-  // Add a function to delete a session
   const deleteSession = async (sessionId: string) => {
     setSessions(prev => prev.filter(session => session.id !== sessionId));
     localStorage.removeItem(sessionId);
@@ -357,7 +332,6 @@ export default function Home() {
     }
   };
 
-  // Revised useEffect to prevent unexpected popups
   React.useEffect(() => {
     if (initialLoadRef.current && !selectedSessionId) {
       if (sessions.length === 0) {
@@ -370,7 +344,6 @@ export default function Home() {
     }
   }, [sessions.length, selectedSessionId, searchQuery]);
 
-  // Helper function to convert ISO 8601 duration to seconds
   const convertDurationToSeconds = (duration: string): number => {
     const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
     const hours = parseInt(match?.[1] || '0');
@@ -379,17 +352,14 @@ export default function Home() {
     return hours * 3600 + minutes * 60 + seconds;
   };
 
-  // Function to check if a video is likely a Short based on duration
   const isYouTubeShort = (contentDetails: any): boolean => {
     if (!contentDetails || !contentDetails.duration) return false;
 
-    // YouTube Shorts are typically 60 seconds or less
     const durationInSeconds = convertDurationToSeconds(contentDetails.duration);
     return durationInSeconds <= 60;
   };
 
   const fetchYoutubeVideos = React.useCallback(async (query: string, currentPage = 1, isLoadingMore = false) => {
-    // Don't fetch if query is empty
     if (!query.trim()) {
       setIsLoading(false);
       setVideos([]);
@@ -405,14 +375,25 @@ export default function Home() {
 
     try {
       const API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
-      const maxResults = 12; // Number of results per page
+      const loggedInUser = await getSession()
+      if (loggedInUser) {
+        const res = await axios.get('/api/get-user', {
+          params: {
+            email: loggedInUser?.user?.email
+          }
+        })
+        console.log(res.data.user.sessions)
+        
+        
+
+      }
+      const maxResults = 12;
       const pageToken = currentPage > 1 ? `&pageToken=${localStorage.getItem(`pageToken_${query}_${currentPage - 1}`)}` : '';
 
       const response = await fetch(`https://youtube.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=${maxResults}&q=${query}${pageToken}&key=${API_KEY}`);
       const data = await response.json();
       console.log(data);
 
-      // Store next page token for future requests
       if (data.nextPageToken) {
         localStorage.setItem(`pageToken_${query}_${currentPage}`, data.nextPageToken);
         setHasMore(true);
@@ -665,7 +646,7 @@ export default function Home() {
       <div className="fixed top-0 left-0 right-0 w-full h-16 border-b bg-background flex items-center justify-between px-4 z-50">
         <div className="flex items-center">
           <Link href="/" className="flex items-center mr-6">
-            <Image src="/nexlogo.png" alt="Nexview" width={40} height={24} />
+            <Image className="dark:brightness-100" src="/nexlogo.png" alt="Nexview" width={40} height={24} />
           </Link>
         </div>
 
@@ -674,7 +655,7 @@ export default function Home() {
             <Bell className="h-5 w-5" />
           </Button>
           <ModeToggle />
-          <Avatar>
+          <Avatar onClick={() => {signOut()}} className="cursor-pointer">
             <AvatarImage src="https://github.com/shadcn.png" />
             <AvatarFallback>CN</AvatarFallback>
           </Avatar>

@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 export async function GET(req: NextRequest) {
 
     const email = req.nextUrl.searchParams.get('email');
+    
 
     if (!email) {
         return NextResponse.json({ message: "Invalid request" }, { status: 400 });

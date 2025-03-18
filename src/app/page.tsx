@@ -52,10 +52,10 @@ export default function Home() {
   interface Session {
     id: string;
     name: string;
-    dailyTime: string;  // Updated to store daily time as a string (e.g., "2 hr")
-    endDate: string;    // Store as ISO date string
+    dailyTime: string;
+    endDate: string;
     createdAt: string;
-    lastStarted?: string; // Track when the session was last started
+    lastStarted?: string; 
   }
 
   const [videos, setVideos] = React.useState<Video[]>([]);

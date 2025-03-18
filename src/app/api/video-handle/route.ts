@@ -7,7 +7,6 @@ export async function POST(req: Request) {
         
         const { user, sessionId, videoId, action } = await req.json();
         
-        console.log(user, sessionId, videoId, action);
         if (!user || !sessionId || !videoId || !action) {
             return NextResponse.json({ message: "Invalid request" }, { status: 400 });
         }
@@ -20,7 +19,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ message: "User not found" }, { status: 404 });
         }
 
-        const existingSession = existingUser.sessions.find((session) => session.id === sessionId);
+        const existingSession = existingUser.sessions.find((session) => session._id.toString() === sessionId);
         
         if (!existingSession) {
             return NextResponse.json({ message: "Session not found" }, { status: 404 });

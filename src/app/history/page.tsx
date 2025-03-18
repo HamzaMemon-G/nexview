@@ -1,5 +1,5 @@
 'use client'
-import React from "react";
+import React, { useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
@@ -54,21 +54,22 @@ export default function HistoryPage() {
   const [sessions, setSessions] = React.useState<any[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  
+  const [loggedInUser, setLoggedInUser] = useState<{ name?: string | null; email?: string | null; image?: string | null } | null>(null);
+
   // Group videos by date 
   const groupByDate = (videos: any[]) => {
     const grouped: { [key: string]: any[] } = {};
-    
+
     videos.forEach(video => {
       const viewedDate = video.viewedAt ? new Date(video.viewedAt) : new Date();
       const dateKey = viewedDate.toDateString();
-      
+
       if (!grouped[dateKey]) {
         grouped[dateKey] = [];
       }
       grouped[dateKey].push(video);
     });
-    
+
     return grouped;
   };
 
@@ -78,7 +79,7 @@ export default function HistoryPage() {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayString = yesterday.toDateString();
-    
+
     if (dateKey === today) return "Today";
     if (dateKey === yesterdayString) return "Yesterday";
     return dateKey;
@@ -99,35 +100,35 @@ export default function HistoryPage() {
       }
 
       console.log("Fetching details for videos:", videoIds);
-      
+
       // Join video IDs with comma for the API request
       const videoIdsParam = videoIds.join(',');
-      
+
       // Fetch video details from YouTube API
       const response = await fetch(
         `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoIdsParam}&key=${API_KEY}`
       );
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error("YouTube API error response:", errorText);
         throw new Error(`YouTube API error: ${response.status}`);
       }
-      
+
       const data = await response.json();
       console.log("YouTube API response:", data);
-      
+
       if (!data.items || data.items.length === 0) {
         console.log("No videos found in YouTube API response");
         return [];
       }
-      
+
       // Process the video data into our format
       return data.items.map((item: any, index: number) => {
         const snippet = item.snippet || {};
         const statistics = item.statistics || {};
         const contentDetails = item.contentDetails || {};
-        
+
         // Format the duration if available
         let duration = "";
         if (contentDetails.duration) {
@@ -156,11 +157,11 @@ export default function HistoryPage() {
         else if (diffInDays < 365) timestamp = `${Math.floor(diffInDays / 30)} months ago`;
         else timestamp = `${Math.floor(diffInDays / 365)} years ago`;
 
-        const thumbnailUrl = 
+        const thumbnailUrl =
           snippet.thumbnails?.maxres?.url ||
-          snippet.thumbnails?.high?.url || 
+          snippet.thumbnails?.high?.url ||
           snippet.thumbnails?.medium?.url ||
-          snippet.thumbnails?.default?.url || 
+          snippet.thumbnails?.default?.url ||
           "https://picsum.photos/seed/placeholder/300/200";
 
         return {
@@ -186,7 +187,7 @@ export default function HistoryPage() {
   const fetchWatchHistory = async () => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
       // Get the current session ID
       const selectedSessionId = localStorage.getItem('nexview-selected-session');
@@ -196,75 +197,83 @@ export default function HistoryPage() {
         setIsLoading(false);
         return;
       }
-      
+
       console.log("Selected session ID:", selectedSessionId);
-      
+
       // Get user session from API
       const session = await getSession();
+      if (session) {
+        if (session.user) {
+          setLoggedInUser(session.user);
+        }
+      } else {
+        window.location.href = "/signin";
+        return;
+      }
       if (!session?.user?.email) {
         console.error("User not authenticated");
         throw new Error("User not authenticated");
       }
-      
+
       console.log("Fetching user data for:", session.user.email);
       const getUser = await axios.get('/api/get-user', {
         params: {
           email: session.user.email
         }
       });
-      
+
       console.log("API response:", getUser.data);
-      
+
       if (getUser.status !== 200 || !getUser.data?.user?.sessions) {
         console.error("Failed to fetch user data or no sessions found");
         throw new Error("Failed to fetch user data");
       }
-      
+
       // Find the selected session
       const selectedSession = getUser.data.user.sessions.find(
-        (s: any) => s.id === selectedSessionId
+        (s: any) => s.id === selectedSessionId || s._id === selectedSessionId
       );
-      
+
       console.log("Selected session data:", selectedSession);
-      
+
       if (!selectedSession) {
         console.log("Selected session not found in user data");
         setWatchHistory([]);
         setIsLoading(false);
         return;
       }
-      
+
       // Get the history video IDs from the session
       const historyItems = selectedSession.history || [];
       console.log("History items:", historyItems);
-      
+
       if (!historyItems.length) {
         console.log("No history found in session");
         setWatchHistory([]);
         setIsLoading(false);
         return;
       }
-      
+
       // Extract video IDs from history items
       const videoIds = historyItems.map((item: any) => {
         if (typeof item === 'string') return item;
         if (item && item.videoId) return item.videoId;
         return null;
       }).filter(Boolean);
-      
+
       console.log("Extracted video IDs:", videoIds);
-      
+
       if (!videoIds.length) {
         console.log("No valid video IDs found in history");
         setWatchHistory([]);
         setIsLoading(false);
         return;
       }
-      
+
       // Fetch video details for each ID
       const videoDetails = await fetchVideoDetails(videoIds);
       console.log("Fetched video details:", videoDetails);
-      
+
       // Merge progress information if available
       const videosWithProgress = videoDetails.map((video: { viewedAt: any; }, index: string | number) => {
         const historyItem = historyItems[index];
@@ -277,7 +286,7 @@ export default function HistoryPage() {
         }
         return video;
       });
-      
+
       setWatchHistory(videosWithProgress);
     } catch (error: any) {
       console.error("Error in fetchWatchHistory:", error);
@@ -297,7 +306,7 @@ export default function HistoryPage() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      const filteredVideos = watchHistory.filter(video => 
+      const filteredVideos = watchHistory.filter(video =>
         video.title.toLowerCase().includes(searchQuery.toLowerCase())
       );
       setWatchHistory(filteredVideos);
@@ -309,7 +318,7 @@ export default function HistoryPage() {
   };
 
   // Clear watch history with improved handling
- 
+
   // Handle clicks outside the search bar
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -332,7 +341,7 @@ export default function HistoryPage() {
     const endDate = new Date(endDateStr);
     const today = new Date();
     const daysRemaining = Math.floor((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     if (daysRemaining <= 0) return "Ended";
     if (daysRemaining === 1) return "1 day";
     if (daysRemaining < 7) return `${daysRemaining} days`;
@@ -346,7 +355,7 @@ export default function HistoryPage() {
     const now = new Date();
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    
+
     const sampleHistory = [
       {
         id: "sample1",
@@ -373,7 +382,7 @@ export default function HistoryPage() {
         duration: "26:48"
       }
     ];
-    
+
     setWatchHistory(sampleHistory);
     localStorage.setItem('history', JSON.stringify(sampleHistory));
     localStorage.setItem('nexview-watch-history', JSON.stringify(sampleHistory));
@@ -395,9 +404,9 @@ export default function HistoryPage() {
             <Bell className="h-5 w-5" />
           </Button>
           <ModeToggle />
-          <Avatar>
-            <AvatarImage src="https://github.com/shadcn.png" />
-            <AvatarFallback>CN</AvatarFallback>
+          <Avatar onClick={() => { window.location.replace('/profile') }} className="cursor-pointer">
+            <AvatarImage src={loggedInUser?.image || "https://github.com/shadcn.png"} />
+            <AvatarFallback>{loggedInUser?.name}</AvatarFallback>
           </Avatar>
         </div>
       </div>
@@ -438,7 +447,7 @@ export default function HistoryPage() {
                   {groupedHistory[dateKey].map((video) => (
                     <Link
                       href={`/video/${video.id}`}
-                      key={video.uniqueId} 
+                      key={video.uniqueId}
                     >
                       <Card className="cursor-pointer border-none shadow-none hover:shadow-md transition-shadow duration-300">
                         <CardContent className="p-0">
@@ -456,8 +465,8 @@ export default function HistoryPage() {
                             )}
                             {video.progress && (
                               <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-600">
-                                <div 
-                                  className="h-full bg-red-600" 
+                                <div
+                                  className="h-full bg-red-600"
                                   style={{ width: `${video.progress}%` }}
                                 ></div>
                               </div>

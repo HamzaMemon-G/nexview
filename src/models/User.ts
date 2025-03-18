@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface Session {
+    [x: string]: any;
     id: string;
     title: string;
     time: string;

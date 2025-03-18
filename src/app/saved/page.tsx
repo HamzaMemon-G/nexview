@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
 import Image from "next/image";
 import { ModeToggle } from "@/components/modetoggle";
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Home as HomeIcon, Clock, ThumbsUp, Bell, Bookmark, Trash2 } from "lucide-react";
@@ -29,13 +29,18 @@ export default function SavedVideos() {
     const [searchQuery, setSearchQuery] = React.useState("");
     const searchRef = React.useRef<HTMLDivElement>(null);
     const [isLoading, setIsLoading] = React.useState(true);
+    const [loggedInUser, setLoggedInUser] = useState<{ name?: string | null; email?: string | null; image?: string | null } | null>(null);
 
     // Get saved videos from MongoDB
     const getSavedVideos = async () => {
         setIsLoading(true);
         try {
             const session = await getSession();
-            if (!session) {
+            if (session) {
+                if (session.user) {
+                    setLoggedInUser(session.user);
+                }
+            } else {
                 window.location.href = "/signin";
                 return;
             }
@@ -56,32 +61,32 @@ export default function SavedVideos() {
 
             // Find the selected session
             const selectedSession = user.data.user.sessions.find(
-                (s: any) => s.id === selectedSessionId
+                (s: any) => s.id === selectedSessionId || s._id === selectedSessionId
             );
-            
+
             console.log("Selected session:", selectedSession);
-            
+
             if (!selectedSession || !selectedSession.savedVideos || selectedSession.savedVideos.length === 0) {
                 console.log("No saved videos found");
                 setSavedVideos([]);
                 setIsLoading(false);
                 return;
             }
-            
+
             // Extract just the video IDs from the saved videos
             const videoIds = selectedSession.savedVideos.map((video: any) => {
                 // Handle both string IDs and object with id property
                 return typeof video === 'string' ? video : video.id;
             }).filter(Boolean).join(',');
-            
+
             console.log("Video IDs to fetch:", videoIds);
-            
+
             if (!videoIds) {
                 setSavedVideos([]);
                 setIsLoading(false);
                 return;
             }
-            
+
             // Fetch the videos from YouTube API
             await fetchVideoDetails(videoIds, selectedSession.savedVideos);
         } catch (error) {
@@ -95,17 +100,17 @@ export default function SavedVideos() {
     const fetchVideoDetails = async (videoIds: string, savedVideoData: any[]) => {
         try {
             const API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
-            
+
             console.log("Fetching videos with IDs:", videoIds);
-            
+
             // Fetch video details from YouTube API
             const response = await fetch(
                 `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoIds}&key=${API_KEY}`
             );
             const data = await response.json();
-            
+
             console.log("YouTube API response:", data);
-            
+
             if (data.items && data.items.length > 0) {
                 // Process the API response
                 const processedVideos = data.items.map((item: any) => {
@@ -115,7 +120,7 @@ export default function SavedVideos() {
                         const savedId = typeof v === 'string' ? v : v.id;
                         return savedId === item.id;
                     });
-                    
+
                     // Process duration
                     let duration = "";
                     if (item.contentDetails?.duration) {
@@ -130,11 +135,11 @@ export default function SavedVideos() {
                                 : `${minutes}:${seconds.padStart(2, '0')}`;
                         }
                     }
-                    
+
                     // Format views
                     const viewCount = parseInt(item.statistics?.viewCount || 0);
                     const views = `${viewCount.toLocaleString()} views`;
-                    
+
                     // Process publish date for timestamp
                     const publishedAt = new Date(item.snippet.publishedAt);
                     const now = new Date();
@@ -147,12 +152,12 @@ export default function SavedVideos() {
                     else if (diffInDays < 30) timestamp = `${Math.floor(diffInDays / 7)} weeks ago`;
                     else if (diffInDays < 365) timestamp = `${Math.floor(diffInDays / 30)} months ago`;
                     else timestamp = `${Math.floor(diffInDays / 365)} years ago`;
-                    
+
                     // Get savedAt date if available, otherwise use current date
                     const dateSaved = savedData && typeof savedData === 'object' && savedData.dateSaved
                         ? new Date(savedData.dateSaved)
                         : new Date();
-                    
+
                     // Format saved date
                     const savedDiffInDays = Math.floor((now.getTime() - dateSaved.getTime()) / (1000 * 60 * 60 * 24));
                     let savedAtFormatted = "";
@@ -162,7 +167,7 @@ export default function SavedVideos() {
                     else if (savedDiffInDays < 30) savedAtFormatted = `${Math.floor(savedDiffInDays / 7)} weeks ago`;
                     else if (savedDiffInDays < 365) savedAtFormatted = `${Math.floor(savedDiffInDays / 30)} months ago`;
                     else savedAtFormatted = `${Math.floor(savedDiffInDays / 365)} years ago`;
-                    
+
                     return {
                         id: item.id,
                         title: item.snippet.title,
@@ -174,7 +179,7 @@ export default function SavedVideos() {
                         dateSaved: savedAtFormatted
                     };
                 });
-                
+
                 console.log("Processed videos:", processedVideos);
                 setSavedVideos(processedVideos);
             } else {
@@ -222,14 +227,14 @@ export default function SavedVideos() {
 
             // Remove from UI first for better UX
             setSavedVideos(prevVideos => prevVideos.filter(video => video.id !== id));
-            
+
             // Then remove from database
             await axios.post("/api/remove-saved-video", {
                 email: session.user?.email,
                 sessionId: selectedSessionId,
                 videoId: id
             });
-            
+
             console.log(`Video ${id} removed from saved videos`);
         } catch (error) {
             console.error("Error removing saved video:", error);
@@ -237,7 +242,7 @@ export default function SavedVideos() {
             getSavedVideos();
         }
     };
-    
+
     // Filter videos based on search query
     const filteredVideos = React.useMemo(() => {
         return savedVideos.filter((video: SavedVideo) =>
@@ -262,9 +267,9 @@ export default function SavedVideos() {
                         <Bell className="h-5 w-5" />
                     </Button>
                     <ModeToggle />
-                    <Avatar>
-                        <AvatarImage src="https://github.com/shadcn.png" />
-                        <AvatarFallback>CN</AvatarFallback>
+                    <Avatar onClick={() => { window.location.replace('/profile') }} className="cursor-pointer">
+                        <AvatarImage src={loggedInUser?.image || "https://github.com/shadcn.png"} />
+                        <AvatarFallback>{loggedInUser?.name}</AvatarFallback>
                     </Avatar>
                 </div>
             </div>
@@ -277,7 +282,7 @@ export default function SavedVideos() {
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
                     </div>
                 )}
-                
+
                 {/* Empty state - only show when not loading and no videos */}
                 {!isLoading && filteredVideos.length === 0 && (
                     <div className="flex flex-col items-center justify-center h-[70vh] text-center">

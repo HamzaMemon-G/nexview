@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ModeToggle } from "@/components/modetoggle";
-import { ArrowLeft, ThumbsUp, ThumbsDown, Share2, BookmarkPlus, BookmarkCheck, Play, Pause, Volume2, VolumeX, Maximize } from "lucide-react";
+import { ArrowLeft, ThumbsUp, ThumbsDown, Share2, BookmarkPlus, BookmarkCheck, Play, Pause, Volume2, VolumeX, Maximize, Clock, X } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { getSession } from 'next-auth/react';
@@ -37,19 +37,19 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
   const router = useRouter();
   const unwrappedParams = use(params) as { id: string };
   const videoId = unwrappedParams.id;
-  
+
   const [videoData, setVideoData] = useState<VideoData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLiked, setIsLiked] = useState(false);
   const [isDisliked, setIsDisliked] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
-  
+
   // Add state for user and session
   const [user, setUser] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  
+
   // Custom video player states
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -60,30 +60,40 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
   const [playerReady, setPlayerReady] = useState(false);
   const [embedMode, setEmbedMode] = useState<'api' | 'iframe'>('api');
   const [playerAttempts, setPlayerAttempts] = useState(0);
-  
+
   // Add loading state specifically for player
   const [playerLoading, setPlayerLoading] = useState(true);
-  
+
   // Refs for the YouTube player
   const playerRef = useRef<any>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
   const playerInterval = useRef<NodeJS.Timeout | null>(null);
-  
+
   // Add ref for the iframe element
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  
+
   // Track fullscreen state
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [loggedInUser, setLoggedInUser] = useState<{ name?: string | null; email?: string | null; image?: string | null } | null>(null);
+  // Pomodoro Timer states
+  const [isPomodoroActive, setIsPomodoroActive] = useState(false);
+  const [pomodoroTime, setPomodoroTime] = useState(25 * 60); // 25 minutes in seconds
+  const [showPomodoroNotification, setShowPomodoroNotification] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<string | null>(null);
 
   // Load video data and user preferences
   useEffect(() => {
     const fetchVideoData = async () => {
       setIsLoading(true);
       const session = await getSession();
-      if (session){
+
+      if (session) {
         setUser(session.user?.email ?? null);
         setIsLoggedIn(true);
+        if (session.user) {
+          setLoggedInUser(session.user);
+        }
       }
 
       // Safely access localStorage within useEffect
@@ -97,24 +107,24 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
         const likedVideos = JSON.parse(localStorage.getItem('likedVideos') || '[]');
         const dislikedVideos = JSON.parse(localStorage.getItem('dislikedVideos') || '[]');
         const savedVideos = JSON.parse(localStorage.getItem('savedVideos') || '[]');
-        
+
         setIsLiked(likedVideos.includes(videoId));
         setIsDisliked(dislikedVideos.includes(videoId));
         setIsSaved(savedVideos.includes(videoId));
       } catch (error) {
         console.error("LocalStorage access error:", error);
       }
-  
+
       try {
         const API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
         const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}&key=${API_KEY}`);
         const data = await response.json();
-        
+
         if (data.items && data.items.length > 0) {
           const videoItem = data.items[0];
           const snippet = videoItem.snippet;
           const stats = videoItem.statistics;
-          
+
           const publishedAt = new Date(snippet.publishedAt);
           const now = new Date();
           const diffInDays = Math.floor((now.getTime() - publishedAt.getTime()) / (1000 * 60 * 60 * 24));
@@ -126,7 +136,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
           else if (diffInDays < 30) timestamp = `${Math.floor(diffInDays / 7)} weeks ago`;
           else if (diffInDays < 365) timestamp = `${Math.floor(diffInDays / 30)} months ago`;
           else timestamp = `${Math.floor(diffInDays / 365)} years ago`;
-          
+
           setVideoData({
             id: videoId,
             title: snippet.title,
@@ -136,7 +146,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
             likes: parseInt(stats.likeCount || 0),
             description: snippet.description
           });
-          
+
         }
       } catch (error) {
         console.error("Error fetching video data:", error);
@@ -150,17 +160,17 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
           likes: 5432,
           description: "This is a video description. If you're seeing this, there was an error loading the actual video data."
         });
-        
+
       } finally {
         setIsLoading(false);
       }
     };
-    
+
     fetchVideoData();
   }, [videoId]);
-  
-  
-  
+
+
+
   // Initialize YouTube Player
   useEffect(() => {
     if (embedMode === 'iframe') {
@@ -169,17 +179,17 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
       setIsBuffering(false);
       return;
     }
-    
+
     // Don't try more than 2 times with the API
     if (playerAttempts > 2) {
       console.log("Switching to iframe embed mode after multiple API failures");
       setEmbedMode('iframe');
       return;
     }
-    
+
     // Check if YouTube API is already loaded
     let apiLoaded = typeof window !== 'undefined' && window.YT && typeof window.YT.Player === 'function';
-    
+
     if (!apiLoaded) {
       // Load YouTube API script
       const tag = document.createElement('script');
@@ -187,15 +197,15 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
       const firstScriptTag = document.getElementsByTagName('script')[0];
       firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
     }
-    
+
     // Function to initialize the player
     const initializePlayer = () => {
       if (!videoContainerRef.current || !videoId) return;
-      
+
       try {
         // Set loading state
         setPlayerLoading(true);
-        
+
         if (playerRef.current) {
           try {
             playerRef.current.destroy();
@@ -203,7 +213,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
             console.log("Error while destroying player:", e);
           }
         }
-        
+
         playerRef.current = new window.YT.Player('player-container', {
           videoId,
           height: '100%',
@@ -231,7 +241,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
         handlePlayerError();
       }
     };
-    
+
     // Initialize player when API is ready
     if (apiLoaded) {
       initializePlayer();
@@ -240,7 +250,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
         initializePlayer();
       };
     }
-    
+
     const playerTimeout = setTimeout(() => {
       if ((isBuffering || playerLoading) && !playerReady && embedMode === 'api') {
         console.log("Player initialization timeout, switching to iframe mode");
@@ -261,7 +271,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
       if (playerInterval.current) {
         clearInterval(playerInterval.current);
       }
-      window.onYouTubeIframeAPIReady = () => {};
+      window.onYouTubeIframeAPIReady = () => { };
     };
   }, [videoId, embedMode, playerAttempts]);
 
@@ -272,19 +282,19 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
       setPlayerLoading(false);
       setIsBuffering(false);
       setDuration(event.target.getDuration());
-      
+
       // Ensure video starts playing
       event.target.playVideo();
       setIsPlaying(true);
-      
+
       // Check if video is muted and sync UI state
       setIsMuted(event.target.isMuted());
-      
+
       // Set up interval to update current time
       if (playerInterval.current) {
         clearInterval(playerInterval.current);
       }
-      
+
       playerInterval.current = setInterval(() => {
         if (playerRef.current && playerRef.current.getCurrentTime) {
           try {
@@ -303,9 +313,9 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
   const handlePlayerStateChange = (event: any) => {
     // Log player state for debugging
     console.log("Player state changed:", event.data);
-    
+
     // Use numeric values directly in case window.YT is not fully loaded
-    switch(event.data) {
+    switch (event.data) {
       case 1: // PLAYING
         setIsPlaying(true);
         setIsBuffering(false);
@@ -330,16 +340,16 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
         break;
     }
   };
-  
+
   const handlePlayerError = () => {
     console.error("YouTube player error");
     setVideoError(true);
     setIsBuffering(false);
     setPlayerLoading(false);
-    
+
     // Increment attempt counter
     setPlayerAttempts(prev => prev + 1);
-    
+
     // After multiple attempts, switch to iframe mode
     if (playerAttempts >= 1) {
       setEmbedMode('iframe');
@@ -356,7 +366,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
       }
     }
   };
-  
+
   const handleMuteToggle = () => {
     if (playerRef.current) {
       if (isMuted) {
@@ -367,7 +377,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
       setIsMuted(!isMuted);
     }
   };
-  
+
   const handleProgress = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
     if (progressBarRef.current && playerRef.current) {
       const progressBar = progressBarRef.current;
@@ -377,7 +387,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
       playerRef.current.seekTo(newTime, true);
     }
   };
-  
+
   // Enhanced fullscreen handler to track state
   const handleFullscreen = () => {
     if (videoContainerRef.current) {
@@ -398,7 +408,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    
+
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
@@ -434,7 +444,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
           if (response.status === 200) {
             setIsLiked(true);
           }
-          
+
           if (isDisliked) {
             const response = await axios.post('/api/video-handle', {
               user,
@@ -447,11 +457,11 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
             }
           }
         }
-        
+
         // Toggle state
         setIsLiked(!isLiked);
 
-        
+
         // Also update localStorage for offline access
         updateLocalStorage('likedVideos', videoId, !isLiked);
         if (isDisliked && !isLiked) {
@@ -463,7 +473,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
     } else {
       // Fallback to localStorage-only approach
       const likedVideos = JSON.parse(localStorage.getItem('likedVideos') || '[]');
-      
+
       if (isLiked) {
         // Remove from liked videos
         const updatedLikedVideos = likedVideos.filter((id: string) => id !== videoId);
@@ -476,7 +486,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
           localStorage.setItem('likedVideos', JSON.stringify(likedVideos));
         }
         setIsLiked(true);
-        
+
         // Remove from disliked if it was disliked
         if (isDisliked) {
           const dislikedVideos = JSON.parse(localStorage.getItem('dislikedVideos') || '[]');
@@ -487,7 +497,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
       }
     }
   };
-  
+
   const handleDislike = async () => {
     if (isLoggedIn && user && sessionId) {
       try {
@@ -527,10 +537,10 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
             }
           }
         }
-        
+
         // Toggle state
         setIsDisliked(!isDisliked);
-        
+
         // Also update localStorage for offline access
         updateLocalStorage('dislikedVideos', videoId, !isDisliked);
         if (isLiked && !isDisliked) {
@@ -542,7 +552,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
     } else {
       // Fallback to localStorage-only approach
       const dislikedVideos = JSON.parse(localStorage.getItem('dislikedVideos') || '[]');
-      
+
       if (isDisliked) {
         // Remove from disliked videos
         const updatedDislikedVideos = dislikedVideos.filter((id: string) => id !== videoId);
@@ -555,7 +565,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
           localStorage.setItem('dislikedVideos', JSON.stringify(dislikedVideos));
         }
         setIsDisliked(true);
-        
+
         // Remove from liked if it was liked
         if (isLiked) {
           const likedVideos = JSON.parse(localStorage.getItem('likedVideos') || '[]');
@@ -566,7 +576,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
       }
     }
   };
-  
+
   const handleSave = async () => {
     if (isLoggedIn && user && sessionId) {
       try {
@@ -591,10 +601,10 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
             setIsSaved(true);
           }
         }
-        
+
         // Toggle state
         setIsSaved(!isSaved);
-        
+
         // Also update localStorage for offline access
         updateLocalStorage('savedVideos', videoId, !isSaved);
       } catch (error) {
@@ -603,7 +613,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
     } else {
       // Fallback to localStorage-only approach
       const savedVideos = JSON.parse(localStorage.getItem('savedVideos') || '[]');
-      
+
       if (isSaved) {
         // Remove from saved videos
         const updatedSavedVideos = savedVideos.filter((id: string) => id !== videoId);
@@ -622,7 +632,6 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
 
   const handleHistory = async () => {
     console.log("Adding to history");
-    console.log(isLoggedIn, user, sessionId);
     if (isLoggedIn && user && sessionId) {
       try {
         const response = await axios.post('/api/video-handle', {
@@ -641,22 +650,22 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
 
       const history = JSON.parse(localStorage.getItem('history') || '[]');
 
-      if (history){
+      if (history) {
         if (!history.includes(videoId)) {
           history.push(videoId);
           localStorage.setItem('history', JSON.stringify(history));
         }
-      }else{
+      } else {
         localStorage.setItem('history', JSON.stringify([videoId]));
       }
     }
   };
-  
-  
+
+
   // Helper for updating localStorage
   const updateLocalStorage = (key: string, id: string, addToList: boolean) => {
     const items = JSON.parse(localStorage.getItem(key) || '[]');
-    
+
     if (addToList) {
       if (!items.includes(id)) {
         items.push(id);
@@ -666,13 +675,13 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
       localStorage.setItem(key, JSON.stringify(updatedItems));
       return;
     }
-    
+
     localStorage.setItem(key, JSON.stringify(items));
   };
-  
+
   const handleShare = async () => {
     const shareUrl = `${window.location.origin}/video/${videoId}`;
-    
+
     try {
       if (navigator.share) {
         await navigator.share({
@@ -688,10 +697,10 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
       console.error('Error sharing:', error);
     }
   };
-  
+
   const retryVideoLoad = () => {
     setVideoError(false);
-    
+
     if (embedMode === 'api' && playerAttempts >= 2) {
       // Switch to iframe embed after multiple API failures
       setEmbedMode('iframe');
@@ -705,13 +714,13 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
           console.log("Error destroying player during retry:", e);
         }
       }
-      
+
       // Load YouTube API again
       const tag = document.createElement('script');
       tag.src = 'https://www.youtube.com/iframe_api';
       const firstScriptTag = document.getElementsByTagName('script')[0];
       firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
-      
+
       setPlayerAttempts(prev => prev + 1);
     } else {
       // Just reload the page if in iframe mode
@@ -725,10 +734,10 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
       const currentSession = await getSession();
       console.log("Current session:", currentSession);
     };
-    
+
     fetchSessionData();
   }, []);
-  
+
   // Enhanced iframe blocker that works in fullscreen
   useEffect(() => {
     if (embedMode === 'iframe' && iframeRef.current) {
@@ -737,11 +746,11 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
         const interceptClicks = () => {
           const iframe = iframeRef.current;
           if (!iframe || !iframe.contentWindow) return;
-          
+
           // Attempt to modify iframe content (this may not work due to cross-origin restrictions)
           try {
             const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-            
+
             if (iframeDoc) {
               // Hide YouTube logo and info button
               const ytElements = iframeDoc.querySelectorAll('.ytp-youtube-button, .ytp-watermark');
@@ -752,7 +761,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
           } catch (e) {
             console.log("Could not access iframe content:", e);
           }
-          
+
           // Add StyleSheet to parent document instead
           const styleId = 'youtube-iframe-style';
           if (!document.getElementById(styleId)) {
@@ -790,10 +799,10 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
             document.head.appendChild(style);
           }
         };
-        
+
         // Try when iframe loads
         iframeRef.current.addEventListener('load', interceptClicks);
-        
+
         // Also try immediately and after delays
         interceptClicks();
         setTimeout(interceptClicks, 1000);
@@ -803,7 +812,87 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
       }
     }
   }, [embedMode]);
-  
+
+  // Request notification permission on component mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotificationPermission(Notification.permission);
+
+      if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+        Notification.requestPermission().then(permission => {
+          setNotificationPermission(permission);
+        });
+      }
+    }
+  }, []);
+
+  // Pomodoro timer effect
+  useEffect(() => {
+    let timerInterval: NodeJS.Timeout | null = null;
+
+    if (isPomodoroActive && pomodoroTime > 0) {
+      timerInterval = setInterval(() => {
+        setPomodoroTime(prevTime => prevTime - 1);
+      }, 1000);
+    } else if (isPomodoroActive && pomodoroTime === 0) {
+      // Timer completed
+      setIsPomodoroActive(false);
+      setPomodoroTime(25 * 60); // Reset to 25 minutes
+
+      // Show notification
+      if (notificationPermission === 'granted') {
+        const notification = new Notification('Pomodoro Timer Complete', {
+          body: 'Time for a break! Take 5 minutes to rest before continuing.',
+          icon: '/nexview.png'
+        });
+      }
+
+      // Show in-app notification
+      setShowPomodoroNotification(true);
+
+      // Pause video if it's playing
+      if (playerRef.current && isPlaying) {
+        playerRef.current.pauseVideo();
+      }
+    }
+
+    return () => {
+      if (timerInterval) clearInterval(timerInterval);
+    };
+  }, [isPomodoroActive, pomodoroTime, notificationPermission, isPlaying]);
+
+  // Function to toggle Pomodoro timer
+  const togglePomodoro = () => {
+    if (isPomodoroActive) {
+      setIsPomodoroActive(false);
+    } else {
+      setIsPomodoroActive(true);
+
+      // Reset timer if it was completed
+      if (pomodoroTime === 0) {
+        setPomodoroTime(25 * 60);
+      }
+    }
+  };
+
+  // Function to reset Pomodoro timer
+  const resetPomodoro = () => {
+    setIsPomodoroActive(false);
+    setPomodoroTime(25 * 60);
+  };
+
+  // Format time as MM:SS
+  const formatPomodoroTime = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+  };
+
+  // Close notification
+  const closeNotification = () => {
+    setShowPomodoroNotification(false);
+  };
+
   return (
     <main className="flex min-h-screen flex-col bg-background">
       {/* Header */}
@@ -812,21 +901,51 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
           <Button variant="ghost" size="icon" className="mr-2" onClick={() => router.back()}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          
+
           <Link href="/" className="flex items-center mr-6">
             <Image src="/nexview.png" alt="Nexview" width={120} height={32} />
           </Link>
         </div>
-        
+
         <div className="flex items-center space-x-4">
+          {/* Pomodoro Timer Button */}
+          <div className="flex items-center mr-2">
+            <Button
+              variant={isPomodoroActive ? "default" : "outline"}
+              size="sm"
+              onClick={togglePomodoro}
+              className="flex items-center gap-1"
+            >
+              <Clock className="h-4 w-4" />
+              <span>{formatPomodoroTime(pomodoroTime)}</span>
+            </Button>
+          </div>
+
           <ModeToggle />
-          <Avatar>
-            <AvatarImage src="https://github.com/shadcn.png" />
-            <AvatarFallback>CN</AvatarFallback>
+          <Avatar onClick={() => { window.location.replace('/profile') }} className="cursor-pointer">
+            <AvatarImage src={loggedInUser?.image || "https://github.com/shadcn.png"} />
+            <AvatarFallback>{loggedInUser?.name}</AvatarFallback>
           </Avatar>
         </div>
       </div>
-      
+
+      {/* Pomodoro Timer Notification */}
+      {showPomodoroNotification && (
+        <div className="fixed top-20 right-4 bg-primary text-primary-foreground p-4 rounded-md shadow-md z-50 max-w-xs">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="font-bold">Pomodoro Timer Complete</h3>
+            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={closeNotification}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <p className="text-sm">Time for a break! Take 5 minutes to rest before continuing.</p>
+          <div className="flex justify-end mt-2 space-x-2">
+            <Button size="sm" variant="outline" onClick={resetPomodoro}>Reset</Button>
+            <Button size="sm" onClick={closeNotification}>Dismiss</Button>
+          </div>
+        </div>
+      )}
+
       {/* Video and Content */}
       <div className="pt-16 px-4 md:px-6 lg:px-8 max-w-6xl mx-auto w-full">
         {isLoading ? (
@@ -836,8 +955,8 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
         ) : (
           <>
             {/* Custom Video Player with YouTube Iframe */}
-            <div 
-              ref={videoContainerRef} 
+            <div
+              ref={videoContainerRef}
               className="aspect-video w-full rounded-lg overflow-hidden mb-4 mt-6 bg-black relative group"
             >
               {/* Add custom styles to hide YouTube branding */}
@@ -873,33 +992,33 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
                   visibility: hidden !important;
                 }
               `}</style>
-              
+
               {/* Show loading indicator only when actually loading/buffering */}
               {(isBuffering || playerLoading) && !videoError && (
                 <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
                 </div>
               )}
-              
+
               {videoError ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center z-30 bg-black/60 p-4">
                   <div className="text-white mb-2 text-center">
                     <p className="font-semibold mb-2">Unable to load video</p>
                     <p className="text-sm opacity-80">
-                      {embedMode === 'api' 
-                        ? "Having trouble with the YouTube player, trying alternative methods..." 
+                      {embedMode === 'api'
+                        ? "Having trouble with the YouTube player, trying alternative methods..."
                         : "There was an error loading the YouTube video"}
                     </p>
                   </div>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     className="bg-primary/20 hover:bg-primary/30 text-white border-white/20"
                     onClick={retryVideoLoad}
                   >
-                    {embedMode === 'api' && playerAttempts < 2 
-                      ? "Retry" 
-                      : embedMode === 'api' 
-                        ? "Try Alternative Player" 
+                    {embedMode === 'api' && playerAttempts < 2
+                      ? "Retry"
+                      : embedMode === 'api'
+                        ? "Try Alternative Player"
                         : "Reload Page"}
                   </Button>
                 </div>
@@ -909,9 +1028,9 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
                     <>
                       {/* YouTube player container for API mode */}
                       <div id="player-container" className="w-full h-full absolute inset-0" />
-                      
+
                       {/* Invisible overlay to handle clicks - improved for better interaction */}
-                      <div 
+                      <div
                         className="absolute inset-0 z-10 cursor-pointer"
                         onClick={handlePlayPause}
                       >
@@ -928,7 +1047,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
                   ) : (
                     <>
                       {/* Direct iframe embed as fallback - improved with better parameters */}
-                      <iframe 
+                      <iframe
                         ref={iframeRef}
                         className="w-full h-full border-0 youtube-nocookie-embed"
                         src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&modestbranding=1&rel=0&showinfo=0&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(window.location.origin)}&widget_referrer=${encodeURIComponent(window.location.href)}&iv_load_policy=3&color=white&controls=1`}
@@ -936,9 +1055,9 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                         allowFullScreen
                       ></iframe>
-                      
+
                       {/* Add a transparent blocker over the YouTube logo area */}
-                      <div 
+                      <div
                         className="yt-blocker"
                         onClick={(e) => {
                           e.preventDefault();
@@ -946,9 +1065,9 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
                           return false;
                         }}
                       ></div>
-                      
+
                       {/* Fullscreen blocker that will be fixed positioned */}
-                      <div 
+                      <div
                         className="yt-blocker-fullscreen"
                         onClick={(e) => {
                           e.preventDefault();
@@ -960,28 +1079,28 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
                   )}
                 </>
               )}
-              
+
               {/* Custom Video Controls - only show in API mode and when player is ready */}
               {embedMode === 'api' && playerReady && (
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col z-20">
                   {/* Progress bar */}
-                  <div 
+                  <div
                     ref={progressBarRef}
                     className="w-full h-2 bg-gray-600 mb-4 cursor-pointer rounded-full overflow-hidden"
                     onClick={handleProgress}
                   >
-                    <div 
-                      className="h-full bg-primary" 
+                    <div
+                      className="h-full bg-primary"
                       style={{ width: `${(currentTime / duration) * 100}%` }}
                     />
                   </div>
-                  
+
                   {/* Controls */}
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-4">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={handlePlayPause}
                         className="text-white hover:text-primary hover:bg-white/10"
                       >
@@ -991,10 +1110,10 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
                           <Play className="h-5 w-5" />
                         )}
                       </Button>
-                      
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={handleMuteToggle}
                         className="text-white hover:text-primary hover:bg-white/10"
                       >
@@ -1004,15 +1123,15 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
                           <Volume2 className="h-5 w-5" />
                         )}
                       </Button>
-                      
+
                       <span className="text-white text-sm">
                         {formatTime(currentTime)} / {formatTime(duration)}
                       </span>
                     </div>
-                    
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={handleFullscreen}
                       className="text-white hover:text-primary hover:bg-white/10"
                     >
@@ -1022,10 +1141,10 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
                 </div>
               )}
             </div>
-            
+
             {/* Video Title & Info */}
             <h1 className="text-xl md:text-2xl font-bold mt-4">{videoData?.title}</h1>
-            
+
             <div className="flex flex-wrap justify-between items-center mt-4">
               <div className="flex items-center">
                 <Avatar className="h-10 w-10 mr-3">
@@ -1039,42 +1158,42 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
                   </p>
                 </div>
               </div>
-              
+
               {/* Action Buttons */}
               <div className="flex items-center space-x-2 mt-4 sm:mt-0">
-                <Button 
-                  variant={isLiked ? "default" : "outline"} 
-                  size="sm" 
+                <Button
+                  variant={isLiked ? "default" : "outline"}
+                  size="sm"
                   onClick={handleLike}
                   className="flex items-center gap-2"
                 >
                   <ThumbsUp className="h-4 w-4" />
                   <span>Like</span>
                 </Button>
-                
-                <Button 
-                  variant={isDisliked ? "default" : "outline"} 
-                  size="sm" 
+
+                <Button
+                  variant={isDisliked ? "default" : "outline"}
+                  size="sm"
                   onClick={handleDislike}
                   className="flex items-center gap-2"
                 >
                   <ThumbsDown className="h-4 w-4" />
                   <span>Dislike</span>
                 </Button>
-                
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={handleShare}
                   className="flex items-center gap-2"
                 >
                   <Share2 className="h-4 w-4" />
                   <span>Share</span>
                 </Button>
-                
-                <Button 
+
+                <Button
                   variant={isSaved ? "default" : "outline"}
-                  size="sm" 
+                  size="sm"
                   onClick={handleSave}
                   className="flex items-center gap-2"
                 >
@@ -1087,7 +1206,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
                 </Button>
               </div>
             </div>
-            
+
             {/* Description with "Show More" Toggle */}
             {videoData?.description && (
               <div className="my-6 p-4 rounded-lg bg-muted/30">
@@ -1095,9 +1214,9 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
                   {videoData.description}
                 </p>
                 {videoData.description.length > 150 && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setShowFullDescription(!showFullDescription)}
                     className="mt-2 text-xs font-medium"
                   >
@@ -1108,7 +1227,7 @@ export default function VideoPage({ params }: { params: VideoPageParams }) {
             )}
           </>
         )}
-        
+
         {/* Add debug info */}
         <div className="p-4 mt-8 border-t">
           <h2 className="text-lg font-bold mb-2">Debug Info</h2>

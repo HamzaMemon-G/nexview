@@ -51,11 +51,19 @@ export default function Home() {
 
   interface Session {
     id: string;
-    name: string;
-    dailyTime: string;
-    endDate: string;
+    name?: string;        // Add optional since API returns 'title' instead
+    title?: string;       // Add to match API response
+    dailyTime?: string;   // Add optional since API returns 'time' instead
+    time?: string;        // Add to match API response
+    endDate?: string;     // Add optional since API returns 'duration' instead
+    duration?: string;    // Add to match API response
     createdAt: string;
     lastStarted?: string; 
+    _id?: string;         // Add MongoDB ID
+    likedVideos?: any[];  // Add from API response
+    dislikedVideos?: any[];  // Add from API response
+    savedVideos?: any[];  // Add from API response
+    history?: any[];      // Add from API response
   }
 
   const [videos, setVideos] = React.useState<Video[]>([]);
@@ -69,7 +77,7 @@ export default function Home() {
   const [isPaginationLoading, setIsPaginationLoading] = React.useState(false);
   const observerRef = React.useRef<IntersectionObserver | null>(null);
   const loadMoreTriggerRef = React.useRef<HTMLDivElement | null>(null);
-
+  const [loggedInUser, setLoggedInUser] = React.useState<{ name?: string | null; email?: string | null; image?: string | null } | null>(null);
   // Session management states
   const [sessions, setSessions] = React.useState<Session[]>([]);
   const [sessionDialogOpen, setSessionDialogOpen] = React.useState(false);
@@ -89,283 +97,15 @@ export default function Home() {
   // Load sessions from localStorage with a flag to track initial load
   const initialLoadRef = React.useRef(true);
 
-  React.useEffect(() => {
-    const savedSessions = localStorage.getItem('nexview-sessions');
-    if (savedSessions) {
-      setSessions(JSON.parse(savedSessions));
-    }
-
-    const lastSelectedSession = localStorage.getItem('nexview-selected-session');
-    if (lastSelectedSession) {
-      setSelectedSessionId(lastSelectedSession);
-
-      const session = JSON.parse(savedSessions || '[]').find(
-        (s: Session) => s.id === lastSelectedSession
-      );
-      if (session) {
-        setSearchQuery(session.name);
-      }
-    }
-
-    initialLoadRef.current = false;
-  }, []);
-
-  React.useEffect(() => {
-    if (sessions.length > 0) {
-      localStorage.setItem('nexview-sessions', JSON.stringify(sessions));
-    }
-  }, [sessions]);
-
-  React.useEffect(() => {
-    if (selectedSessionId) {
-      localStorage.setItem('nexview-selected-session', selectedSessionId);
-    }
-  }, [selectedSessionId]);
-
-  React.useEffect(() => {
-    const fetchSession = async () => {
-      const session = await getSession();
-      const userEmail = session?.user?.email;
-      if (userEmail) {
-        setUser(userEmail);
-      }
-    };
-    fetchSession();
-  }, []);
-
-  const createNewSession = async () => {
-    if (newSessionName.trim() === "" || newSessionDailyTime.trim() === "") return;
-
-    const localSessionId = `session-${Date.now()}`;
-    const newSession: Session = {
-      id: localSessionId,
-      name: newSessionName,
-      dailyTime: newSessionDailyTime,
-      endDate: newSessionEndDate.toISOString(),
-      createdAt: new Date().toISOString()
-    };
-
-    setSessions(prev => [...prev, newSession]);
-    setSelectedSessionId(localSessionId);
-    setSearchQuery(newSessionName);
-    setSessionDialogOpen(false);
-
-    setNewSessionName("");
-    setNewSessionDailyTime("1 hr");
-    setNewSessionEndDate(addDays(new Date(), 7));
-
-    if (user) {
-      try {
-        const response = await axios.post('/api/create-session', {
-          user: user,
-          session: newSession
-        });
-
-        console.log(response)
-
-        if (response.status === 200) {
-          const data = await response.data;
-          if (data.success && data.sessionId) {
-            // Update the local session with the MongoDB ID
-            const updatedSessions = sessions.map(s =>
-              s.id === localSessionId ? { ...s, id: data.sessionId } : s
-            );
-
-            setSessions(updatedSessions);
-            setSelectedSessionId(data.sessionId);
-            localStorage.setItem('currentSessionId', data.sessionId);
-          }
-        } else {
-          console.error('Failed to create session in MongoDB:', response.data);
-        }
-      } catch (error) {
-        console.error('Error creating session in MongoDB:', error);
-      }
-    }
-  };
-
-  const formatTimeFrame = (startTime: string, endTime: string) => {
-    return `${startTime} - ${endTime} daily`;
-  };
-
-  const formatDuration = (endDateStr: string) => {
-    const endDate = new Date(endDateStr);
-    const today = new Date();
-    const daysRemaining = differenceInDays(endDate, today);
-
-    if (daysRemaining <= 0) return "Ended";
-    if (daysRemaining === 1) return "1 day";
-    if (daysRemaining < 7) return `${daysRemaining} days`;
-    if (daysRemaining < 30) return `${Math.floor(daysRemaining / 7)} weeks`;
-    if (daysRemaining < 365) return `${Math.floor(daysRemaining / 30)} months`;
-    return `${Math.floor(daysRemaining / 365)} years`;
-  };
-
-  const parseTimeToMinutes = (timeStr: string): number => {
-    const hourMatch = timeStr.match(/(\d+(\.\d+)?)\s*hr/);
-    if (hourMatch) {
-      return parseFloat(hourMatch[1]) * 60;
-    }
-
-   const minMatch = timeStr.match(/(\d+)\s*min/);
-    if (minMatch) {
-      return parseInt(minMatch[1]);
-    }
-
-    const numMatch = timeStr.match(/(\d+(\.\d+)?)/);
-    if (numMatch) {
-      return parseFloat(numMatch[1]) * 60;
-    }
-
-    return 60;
-  };
-
-  React.useEffect(() => {
-    if (selectedSessionId) {
-      const currentSession = sessions.find(s => s.id === selectedSessionId);
-      if (currentSession) {
-        const sessionMinutes = parseTimeToMinutes(currentSession.dailyTime);
-        setTotalSessionTime(sessionMinutes);
-
-        if (!currentSession.lastStarted || isNewDay(currentSession.lastStarted)) {
-          const updatedSessions = sessions.map(s =>
-            s.id === selectedSessionId
-              ? { ...s, lastStarted: new Date().toISOString() }
-              : s
-          );
-          setSessions(updatedSessions);
-          setSessionTimeElapsed(0);
-        } else {
-          const startTime = new Date(currentSession.lastStarted);
-          const now = new Date();
-          const elapsedMinutes = (now.getTime() - startTime.getTime()) / (1000 * 60);
-          setSessionTimeElapsed(Math.min(elapsedMinutes, sessionMinutes));
-        }
-      }
-    }
-  }, [selectedSessionId, sessions]);
-
-  React.useEffect(() => {
-    if (!selectedSessionId) return;
-
-    const timer = setInterval(() => {
-      const currentSession = sessions.find(s => s.id === selectedSessionId);
-      if (currentSession?.lastStarted) {
-        const startTime = new Date(currentSession.lastStarted);
-        const now = new Date();
-        const elapsedMinutes = (now.getTime() - startTime.getTime()) / (1000 * 60);
-        setSessionTimeElapsed(Math.min(elapsedMinutes, totalSessionTime));
-      }
-    }, 30000);
-
-    return () => clearInterval(timer);
-  }, [selectedSessionId, sessions, totalSessionTime]);
-
-  const isNewDay = (timestamp: string): boolean => {
-    const date = new Date(timestamp);
-    const today = new Date();
-    return date.getDate() !== today.getDate() ||
-      date.getMonth() !== today.getMonth() ||
-      date.getFullYear() !== today.getFullYear();
-  };
-
-  const formatElapsedTime = (minutes: number): string => {
-    if (minutes < 60) {
-      return `${Math.floor(minutes)} min`;
-    }
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = Math.floor(minutes % 60);
-    return remainingMinutes > 0 ? `${hours} hr ${remainingMinutes} min` : `${hours} hr`;
-  };
-
-  const formatRemainingTime = (totalMinutes: number, elapsedMinutes: number): string => {
-    const remaining = Math.max(0, totalMinutes - elapsedMinutes);
-    return formatElapsedTime(remaining);
-  };
-
-  const handleSessionSelect = (sessionId: string) => {
-    setSelectedSessionId(sessionId);
-    const session = sessions.find(s => s.id === sessionId);
-    if (session) {
-      setSearchQuery(session.name);
-      setSessionSelectionOpen(false);
-      setPage(1);
-      fetchYoutubeVideos(session.name);
-    }
-    const currentSession = localStorage.getItem('nexview-selected-session')
-    if (!currentSession) {
-      setSessionSelectionOpen(true);
-    }
-  };
-
-  const deleteSession = async (sessionId: string) => {
-    setSessions(prev => prev.filter(session => session.id !== sessionId));
-    localStorage.removeItem(sessionId);
-    localStorage.removeItem('nexview-selected-session');
-    localStorage.removeItem('likedVideos');
-    localStorage.removeItem('history');
-    localStorage.removeItem('savedVideos');
-    const sessions = localStorage.getItem('nexview-sessions');
-    if (sessions?.includes(sessionId)) {
-      const savedSessions = JSON.parse(localStorage.getItem('nexview-sessions') || '[]');
-      const updatedSessions = savedSessions.filter((s: Session) => s.id !== sessionId);
-      localStorage.setItem('nexview-sessions', JSON.stringify(updatedSessions));
-    }
-    if (selectedSessionId === sessionId) {
-      setSelectedSessionId(null);
-      setSearchQuery("");
-    }
-    try {
-      console.log(user, sessionId);
-      const response = await axios.post('/api/delete-session', {
-        email: user,
-        sessionId: sessionId
-      });
-      console.log(response.data.message);
-    } catch (error) {
-      console.error('Error deleting session:', error);
-    }
-
-    if (selectedSessionId === sessionId) {
-      setSelectedSessionId(null);
-      setSearchQuery("");
-    }
-  };
-
-  React.useEffect(() => {
-    if (initialLoadRef.current && !selectedSessionId) {
-      if (sessions.length === 0) {
-        setSessionDialogOpen(true);
-      } else {
-        setSessionSelectionOpen(true);
-      }
-
-      initialLoadRef.current = false;
-    }
-  }, [sessions.length, selectedSessionId, searchQuery]);
-
-  const convertDurationToSeconds = (duration: string): number => {
-    const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-    const hours = parseInt(match?.[1] || '0');
-    const minutes = parseInt(match?.[2] || '0');
-    const seconds = parseInt(match?.[3] || '0');
-    return hours * 3600 + minutes * 60 + seconds;
-  };
-
-  const isYouTubeShort = (contentDetails: any): boolean => {
-    if (!contentDetails || !contentDetails.duration) return false;
-
-    const durationInSeconds = convertDurationToSeconds(contentDetails.duration);
-    return durationInSeconds <= 60;
-  };
-
-  const fetchYoutubeVideos = React.useCallback(async (query: string, currentPage = 1, isLoadingMore = false) => {
-    if (!query.trim()) {
+  const fetchYoutubeVideos = React.useCallback(async (query: string | undefined, currentPage = 1, isLoadingMore = false) => {
+    // Check if query is undefined or empty
+    if (!query || !query.trim()) {
       setIsLoading(false);
       setVideos([]);
       return;
     }
 
+    // Now we know query has a value and we can safely use trim()
     if (currentPage === 1) {
       setIsLoading(true);
       setHasMore(true);
@@ -375,18 +115,7 @@ export default function Home() {
 
     try {
       const API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
-      const loggedInUser = await getSession()
-      if (loggedInUser) {
-        const res = await axios.get('/api/get-user', {
-          params: {
-            email: loggedInUser?.user?.email
-          }
-        })
-        console.log(res.data.user.sessions)
-        
-        
-
-      }
+      
       const maxResults = 12;
       const pageToken = currentPage > 1 ? `&pageToken=${localStorage.getItem(`pageToken_${query}_${currentPage - 1}`)}` : '';
 
@@ -405,7 +134,6 @@ export default function Home() {
         const videoIds = data.items.map((item: any) => item.id.videoId).join(',');
         const statsResponse = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,contentDetails&id=${videoIds}&key=${API_KEY}`);
         const statsData = await statsResponse.json();
-        console.log(statsData);
 
         const processedVideos = data.items.map((item: any, index: number) => {
           const stats = statsData.items[index]?.statistics || {};
@@ -520,6 +248,352 @@ export default function Home() {
     };
   }, [hasMore, isLoading, isPaginationLoading, loadMoreVideos]);
 
+  React.useEffect(() => {
+    const loggedInUser = async () => {
+      const session = await getSession();
+      if (session?.user?.email) {
+        try {
+          const existingUser = await axios.get('/api/get-user', {
+            params: {
+              email: session.user.email,
+            },
+          });
+  
+          if (existingUser.status === 200) {
+            setLoggedInUser(session?.user);
+            const savedSessions = existingUser.data.user.sessions;
+  
+            if (savedSessions && Array.isArray(savedSessions)) {
+              // Map API fields to our expected field names for consistency
+              const normalizedSessions = savedSessions.map((s: Session) => ({
+                ...s,
+                id: s._id || s.id,    // Use MongoDB _id if available
+                name: s.title || s.name,
+                dailyTime: s.time || s.dailyTime,
+                endDate: s.duration || s.endDate
+              }));
+              
+              setSessions(normalizedSessions);
+              
+              const lastSelectedSession = localStorage.getItem('nexview-selected-session');
+              if (lastSelectedSession) {
+                // Check if we have this session in our normalized sessions
+                const sessionExists = normalizedSessions.some((s: Session) => 
+                  s.id === lastSelectedSession || s._id === lastSelectedSession
+                );
+                
+                if (sessionExists) {
+                  setSelectedSessionId(lastSelectedSession);
+                  
+                  const foundSession = normalizedSessions.find((s: Session) => 
+                    s.id === lastSelectedSession || s._id === lastSelectedSession
+                  );
+                  
+                  if (foundSession?.name) {
+                    setSearchQuery(foundSession.name);
+                  }
+                } else {
+                  localStorage.removeItem('nexview-selected-session');
+                }
+              }
+            }
+  
+            initialLoadRef.current = false;
+          } else {
+            console.error('Failed to fetch user data:', existingUser.data);
+          }
+        } catch (error) {
+          console.error('Error fetching user data:', error);
+        }
+      }
+    };
+    loggedInUser();
+  }, []);
+
+
+  // Add a separate effect to handle initial session selection dialogs
+  React.useEffect(() => {
+    if (initialLoadRef.current === false && sessions.length > 0 && !selectedSessionId) {
+      // If we have sessions but none selected, show selection dialog
+      setSessionSelectionOpen(true);
+    } else if (initialLoadRef.current === false && sessions.length === 0) {
+      // If we have no sessions, show creation dialog
+      setSessionDialogOpen(true);
+    }
+  }, [sessions.length, selectedSessionId, initialLoadRef.current]);
+
+  // Modify handleSessionSelect to be more robust
+  const handleSessionSelect = (sessionId: string) => {
+    const session = sessions.find(s => s.id === sessionId || s._id === sessionId);
+    
+    // Store MongoDB _id if available, otherwise use the provided sessionId
+    const idToStore = session?._id || sessionId;
+    
+    setSelectedSessionId(idToStore);
+    localStorage.setItem('nexview-selected-session', idToStore);
+    
+    if (session?.name || session?.title) {
+      setSearchQuery(session.name || session.title || "");
+      setSessionSelectionOpen(false);
+      setPage(1);
+    } else {
+      setSearchQuery("");
+    }
+  };
+
+  // Fix createNewSession to handle DB ID correctly
+  const createNewSession = async () => {
+    if (newSessionName.trim() === "" || newSessionDailyTime.trim() === "") return;
+
+    const localSessionId = `temp-${Date.now()}`;
+    const newSession: Session = {
+      id: localSessionId,
+      name: newSessionName,
+      title: newSessionName,       // Add title for API compatibility
+      dailyTime: newSessionDailyTime,
+      time: newSessionDailyTime,   // Add time for API compatibility
+      endDate: newSessionEndDate.toISOString(),
+      duration: newSessionEndDate.toISOString(), // Add duration for API compatibility
+      createdAt: new Date().toISOString()
+    };
+
+    // Optimistically update UI
+    setSessions(prev => [...prev, newSession]);
+    setSelectedSessionId(localSessionId);
+    setSearchQuery(newSessionName);
+    setSessionDialogOpen(false);
+
+    // Reset form fields
+    setNewSessionName("");
+    setNewSessionDailyTime("1 hr");
+    setNewSessionEndDate(addDays(new Date(), 7));
+
+    if (user) {
+      try {
+        const response = await axios.post('/api/create-session', {
+          user: user,
+          session: newSession
+        });
+
+        if (response.status === 200) {
+          const data = response.data;
+          // Handle the different response format
+          if (data.message === "Session created successfully" && Array.isArray(data.data)) {
+            const createdSessions = data.data;
+            // Find our newly created session in the response
+            const createdSession = createdSessions.find((s: Session) => s.id === localSessionId);
+            
+            if (createdSession && createdSession._id) {
+              // Update sessions with the MongoDB ID
+              setSessions(prev => prev.map(s => 
+                s.id === localSessionId ? {
+                  ...s,
+                  _id: createdSession._id,
+                  // Map API fields to our expected fields for consistency
+                  name: createdSession.title || s.name,
+                  dailyTime: createdSession.time || s.dailyTime,
+                  endDate: createdSession.duration || s.endDate
+                } : s
+              ));
+              
+              // Store the MongoDB ID in localStorage
+              localStorage.setItem('nexview-selected-session', createdSession._id);
+              setSelectedSessionId(createdSession._id);
+            }
+          }
+        } else {
+          console.error('Failed to create session in MongoDB:', response.data);
+          // Remove optimistically added session on failure
+          setSessions(prev => prev.filter(s => s.id !== localSessionId));
+          setSelectedSessionId(null);
+        }
+      } catch (error) {
+        console.error('Error creating session in MongoDB:', error);
+        // Remove optimistically added session on error
+        setSessions(prev => prev.filter(s => s.id !== localSessionId));
+        setSelectedSessionId(null);
+      }
+    }
+  };
+
+  // Ensure deleteSession properly updates everything
+  const deleteSession = async (sessionId: string) => {
+    // Find the session to be deleted
+    const sessionToDelete = sessions.find(s => 
+      s.id === sessionId || 
+      s._id === sessionId || 
+      String(s._id) === sessionId
+    );
+    
+    if (!sessionToDelete) return;
+    
+    // Get the MongoDB ID for the API call
+    const mongoDbId = sessionToDelete._id || sessionId;
+    
+    // Remove from local state - fix the filtering logic
+    setSessions(prev => prev.filter(session => 
+      session.id !== sessionId && 
+      session._id !== sessionId && 
+      String(session._id) !== sessionId
+    ));
+    
+    // Update check for selected session
+    const isSelected = 
+      selectedSessionId === sessionId || 
+      String(selectedSessionId) === String(sessionId);
+    
+    // If this was the selected session, clear local storage and state
+    if (isSelected) {
+      localStorage.removeItem('nexview-selected-session');
+      setSelectedSessionId(null);
+      setSearchQuery("");
+    }
+    
+    // Delete from database
+    try {
+      console.log('Deleting session with ID:', mongoDbId);
+      const response = await axios.post('/api/delete-session', {
+        email: user,
+        sessionId: String(mongoDbId) // Ensure sessionId is a string
+      });
+      console.log('Delete response:', response.data);
+    } catch (error) {
+      console.error('Error deleting session:', error);
+    }
+  };
+
+  React.useEffect(() => {
+    const fetchSession = async () => {
+      const session = await getSession();
+      const userEmail = session?.user?.email;
+      if (userEmail) {
+        setUser(userEmail);
+      }
+    };
+    fetchSession();
+  }, []);
+
+  const formatTimeFrame = (startTime: string, endTime: string) => {
+    return `${startTime} - ${endTime} daily`;
+  };
+
+  const formatDuration = (endDateStr: string | undefined) => {
+      if (!endDateStr) return "Unknown";
+      
+      const endDate = new Date(endDateStr);
+      const today = new Date();
+      const daysRemaining = differenceInDays(endDate, today);
+  
+      if (daysRemaining <= 0) return "Ended";
+      if (daysRemaining === 1) return "1 day";
+      if (daysRemaining < 7) return `${daysRemaining} days`;
+      if (daysRemaining < 30) return `${Math.floor(daysRemaining / 7)} weeks`;
+      if (daysRemaining < 365) return `${Math.floor(daysRemaining / 30)} months`;
+      return `${Math.floor(daysRemaining / 365)} years`;
+    };
+
+  // Add null checks to parseTimeToMinutes function
+  const parseTimeToMinutes = (timeStr: string | undefined): number => {
+    // Check if timeStr is undefined or null
+    if (!timeStr) return 60; // Default to 60 minutes
+    
+    const hourMatch = timeStr.match(/(\d+(\.\d+)?)\s*hr/);
+    if (hourMatch) {
+      return parseFloat(hourMatch[1]) * 60;
+    }
+
+    const minMatch = timeStr.match(/(\d+)\s*min/);
+    if (minMatch) {
+      return parseInt(minMatch[1]);
+    }
+
+    const numMatch = timeStr.match(/(\d+(\.\d+)?)/);
+    if (numMatch) {
+      return parseFloat(numMatch[1]) * 60;
+    }
+
+    return 60;
+  };
+
+  // Add safety checks in useEffect for session time tracking
+  React.useEffect(() => {
+    if (selectedSessionId) {
+      const currentSession = sessions.find(s => s.id === selectedSessionId || s._id === selectedSessionId);
+      if (currentSession) {
+        const sessionMinutes = parseTimeToMinutes(currentSession.dailyTime);
+        setTotalSessionTime(sessionMinutes);
+
+        if (!currentSession.lastStarted || isNewDay(currentSession.lastStarted)) {
+          const updatedSessions = sessions.map(s =>
+            s.id === selectedSessionId
+              ? { ...s, lastStarted: new Date().toISOString() }
+              : s
+          );
+          setSessions(updatedSessions);
+          setSessionTimeElapsed(0);
+        } else {
+          const startTime = new Date(currentSession.lastStarted);
+          const now = new Date();
+          const elapsedMinutes = (now.getTime() - startTime.getTime()) / (1000 * 60);
+          setSessionTimeElapsed(Math.min(elapsedMinutes, sessionMinutes));
+        }
+      }
+    }
+  }, [selectedSessionId, sessions]);
+
+  React.useEffect(() => {
+    if (!selectedSessionId) return;
+
+    const timer = setInterval(() => {
+      const currentSession = sessions.find(s => s.id === selectedSessionId || s._id === selectedSessionId);
+      if (currentSession?.lastStarted) {
+        const startTime = new Date(currentSession.lastStarted);
+        const now = new Date();
+        const elapsedMinutes = (now.getTime() - startTime.getTime()) / (1000 * 60);
+        setSessionTimeElapsed(Math.min(elapsedMinutes, totalSessionTime));
+      }
+    }, 30000);
+
+    return () => clearInterval(timer);
+  }, [selectedSessionId, sessions, totalSessionTime]);
+
+  const isNewDay = (timestamp: string): boolean => {
+    const date = new Date(timestamp);
+    const today = new Date();
+    return date.getDate() !== today.getDate() ||
+      date.getMonth() !== today.getMonth() ||
+      date.getFullYear() !== today.getFullYear();
+  };
+
+  const formatElapsedTime = (minutes: number): string => {
+    if (minutes < 60) {
+      return `${Math.floor(minutes)} min`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = Math.floor(minutes % 60);
+    return remainingMinutes > 0 ? `${hours} hr ${remainingMinutes} min` : `${hours} hr`;
+  };
+
+  const formatRemainingTime = (totalMinutes: number, elapsedMinutes: number): string => {
+    const remaining = Math.max(0, totalMinutes - elapsedMinutes);
+    return formatElapsedTime(remaining);
+  };
+
+  const convertDurationToSeconds = (duration: string): number => {
+    const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    const hours = parseInt(match?.[1] || '0');
+    const minutes = parseInt(match?.[2] || '0');
+    const seconds = parseInt(match?.[3] || '0');
+    return hours * 3600 + minutes * 60 + seconds;
+  };
+
+  const isYouTubeShort = (contentDetails: any): boolean => {
+    if (!contentDetails || !contentDetails.duration) return false;
+
+    const durationInSeconds = convertDurationToSeconds(contentDetails.duration);
+    return durationInSeconds <= 60;
+  };
+
   const getMockVideos = () => {
     return [
       {
@@ -606,8 +680,8 @@ export default function Home() {
   // Helper function to get the current session name
   const getCurrentSessionName = (): string => {
     if (!selectedSessionId) return "";
-    const currentSession = sessions.find(s => s.id === selectedSessionId);
-    return currentSession?.name || "";
+    const currentSession = sessions.find(s => s.id === selectedSessionId || s._id === selectedSessionId);
+    return currentSession?.name || currentSession?.title || "";
   };
 
   // Modify the onClick handler for the search button
@@ -618,7 +692,7 @@ export default function Home() {
   };
 
   const getCurrentSession = () => {
-    return sessions.find(s => s.id === selectedSessionId);
+    return sessions.find(s => s.id === selectedSessionId || s._id === selectedSessionId);
   };
 
   // Add a function to clear search and return to session content
@@ -655,9 +729,9 @@ export default function Home() {
             <Bell className="h-5 w-5" />
           </Button>
           <ModeToggle />
-          <Avatar onClick={() => {signOut()}} className="cursor-pointer">
-            <AvatarImage src="https://github.com/shadcn.png" />
-            <AvatarFallback>CN</AvatarFallback>
+          <Avatar onClick={() => {window.location.replace('/profile')}} className="cursor-pointer">
+            <AvatarImage src={loggedInUser?.image || "https://github.com/shadcn.png"} />
+            <AvatarFallback>{loggedInUser?.name}</AvatarFallback>
           </Avatar>
         </div>
       </div>

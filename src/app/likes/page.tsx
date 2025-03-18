@@ -1,5 +1,5 @@
 'use client'
-import React from "react";
+import React, { useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
@@ -20,7 +20,7 @@ import { PlusCircle } from "lucide-react";
 import { getSession } from "next-auth/react";
 import axios from "axios";
 import { FloatingNav } from "@/components/floating-nav";
-import Router from "next/router";
+import { useRouter } from "next/navigation"; // Fixed: Using proper App Router import
 
 interface VideoDetails {
   id: string;
@@ -35,6 +35,7 @@ interface VideoDetails {
 }
 
 export default function LikesPage() {
+  const router = useRouter(); // Fixed: Using the router hook
   const [likedVideos, setLikedVideos] = React.useState<VideoDetails[]>([]);
   const [showSearch, setShowSearch] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -42,6 +43,7 @@ export default function LikesPage() {
   const [sessions, setSessions] = React.useState<any[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [loggedInUser, setLoggedInUser] = useState<{ name?: string | null; email?: string | null; image?: string | null } | null>(null);
 
   // Fetch video details from YouTube API with better error handling
   const fetchVideoDetails = async (videoIds: string[]) => {
@@ -57,34 +59,34 @@ export default function LikesPage() {
         throw new Error("YouTube API key is missing");
       }
 
-      
+
       // Join video IDs with comma for the API request
       const videoIdsParam = videoIds.join(',');
-      
+
       // Fetch video details from YouTube API
       const response = await fetch(
         `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoIdsParam}&key=${API_KEY}`
       );
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error("YouTube API error response:", errorText);
         throw new Error(`YouTube API error: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
+
       if (!data.items || data.items.length === 0) {
         console.log("No videos found in YouTube API response");
         return [];
       }
-      
+
       // Process the video data into our format
       return data.items.map((item: any, index: number) => {
         const snippet = item.snippet || {};
         const statistics = item.statistics || {};
         const contentDetails = item.contentDetails || {};
-        
+
         // Format the duration if available
         let duration = "";
         if (contentDetails.duration) {
@@ -113,11 +115,11 @@ export default function LikesPage() {
         else if (diffInDays < 365) timestamp = `${Math.floor(diffInDays / 30)} months ago`;
         else timestamp = `${Math.floor(diffInDays / 365)} years ago`;
 
-        const thumbnailUrl = 
+        const thumbnailUrl =
           snippet.thumbnails?.maxres?.url ||
-          snippet.thumbnails?.high?.url || 
+          snippet.thumbnails?.high?.url ||
           snippet.thumbnails?.medium?.url ||
-          snippet.thumbnails?.default?.url || 
+          snippet.thumbnails?.default?.url ||
           "https://picsum.photos/seed/placeholder/300/200";
 
         return {
@@ -143,7 +145,7 @@ export default function LikesPage() {
     const fetchLikedVideos = async () => {
       setIsLoading(true);
       setError(null);
-      
+
       try {
         // Get the current session ID
         const selectedSessionId = localStorage.getItem('nexview-selected-session');
@@ -152,43 +154,43 @@ export default function LikesPage() {
           setIsLoading(false);
           return;
         }
-        
-        
+
+
         // Get user session from API
         const session = await getSession();
         if (!session?.user?.email) {
           console.error("User not authenticated");
           throw new Error("User not authenticated");
         }
-        
+
         const getUser = await axios.get('/api/get-user', {
           params: {
             email: session.user.email
           }
         });
-        
-        
+
+
         if (getUser.status !== 200 || !getUser.data?.user?.sessions) {
           console.error("Failed to fetch user data or no sessions found");
           throw new Error("Failed to fetch user data");
         }
-        
-        // Find the selected session
+
+        // Find the selected session - use consistent property name (id)
         const selectedSession = getUser.data.user.sessions.find(
-          (s: any) => s.id === selectedSessionId
+          (s: any) => s.id === selectedSessionId || s._id === selectedSessionId
         );
-        
-        
+
+
         if (!selectedSession) {
           console.log("Selected session not found in user data");
           setLikedVideos([]);
           setIsLoading(false);
           return;
         }
-        
+
         // Get the liked video IDs from the session
         let likedVideoIds: string[] = [];
-        
+
         // Handle both array of strings and array of objects
         if (Array.isArray(selectedSession.likedVideos)) {
           likedVideoIds = selectedSession.likedVideos.map((item: any) => {
@@ -200,15 +202,15 @@ export default function LikesPage() {
           // Handle case where likedVideos is a single string
           likedVideoIds = [selectedSession.likedVideos];
         }
-        
-        
+
+
         if (!likedVideoIds.length) {
           console.log("No liked videos found in session");
           setLikedVideos([]);
           setIsLoading(false);
           return;
         }
-        
+
         // Fetch video details for each ID
         const videoDetails = await fetchVideoDetails(likedVideoIds);
         setLikedVideos(videoDetails);
@@ -220,7 +222,7 @@ export default function LikesPage() {
         setIsLoading(false);
       }
     };
-    
+
     fetchLikedVideos();
   }, []);
 
@@ -267,20 +269,29 @@ export default function LikesPage() {
     try {
       const selectedSessionId = localStorage.getItem('nexview-selected-session');
       const session = await getSession();
+      if (session) {
+        if (session.user) {
+          setLoggedInUser(session.user);
+        }
+      } else {
+        window.location.href = "/signin";
+        return;
+      }
       if (!selectedSessionId || !session?.user?.email) {
         setLikedVideos([]);
         return;
       }
-      
+
       const getUser = await axios.get('/api/get-user', {
         params: { email: session.user.email }
       });
-      
+
       if (getUser.status === 200 && getUser.data?.user?.sessions) {
+        // Fixed: Use consistent property naming (check both id and _id)
         const selectedSession = getUser.data.user.sessions.find(
-          (s: any) => s.id === selectedSessionId
+          (s: any) => s.id === selectedSessionId || s._id === selectedSessionId
         );
-        
+
         if (selectedSession?.likedVideos?.length) {
           const videoDetails = await fetchVideoDetails(selectedSession.likedVideos);
           setLikedVideos(videoDetails);
@@ -344,9 +355,9 @@ export default function LikesPage() {
             <Bell className="h-5 w-5" />
           </Button>
           <ModeToggle />
-          <Avatar>
-            <AvatarImage src="https://github.com/shadcn.png" />
-            <AvatarFallback>CN</AvatarFallback>
+          <Avatar onClick={() => { window.location.replace('/profile') }} className="cursor-pointer">
+            <AvatarImage src={loggedInUser?.image || "https://github.com/shadcn.png"} />
+            <AvatarFallback>{loggedInUser?.name}</AvatarFallback>
           </Avatar>
         </div>
       </div>
@@ -376,6 +387,7 @@ export default function LikesPage() {
               <Button variant="outline" className="mt-6" onClick={() => {
                 const fetchDebug = async () => {
                   const session = await getSession();
+                  
                   const selectedSessionId = localStorage.getItem('nexview-selected-session');
                   if (session?.user?.email) {
                     const userResult = await axios.get('/api/get-user', {
@@ -443,7 +455,7 @@ export default function LikesPage() {
         onSearchQueryChange={(query) => setSearchQuery(query)}
         onSearchSubmit={handleSearch}
         setShowSearch={setShowSearch}
-        onCreateSessionClick={() => Router.push('/')}
+        onCreateSessionClick={() => router.push('/')} // Fixed: Using the router hook
       />
     </main>
   );

@@ -299,7 +299,7 @@ export default function ProfilePage() {
                                 <Calendar
                                     mode="multiple"
                                     selected={streakDates}
-                                    className="rounded-md border"
+                                    
                                     disabled={(date) => date > new Date()}
                                 />
                             ) : (

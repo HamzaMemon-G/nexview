@@ -8,6 +8,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import axios from "axios";
 import { getSession } from "next-auth/react";
+import { FloatingNav } from "@/components/floating-nav";
 
 // Define types for the user data structure
 interface Session {
@@ -206,6 +207,7 @@ export default function ProfilePage() {
     const [currentStreak, setCurrentStreak] = useState(0);
     const [longestStreak, setLongestStreak] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
+    const [sessions, setSessions] = useState<any[]>([]);
 
     useEffect(() => {
         setIsClient(true);
@@ -228,10 +230,27 @@ export default function ProfilePage() {
             }
         };
 
+        const loadSessions = () => {
+            const savedSessions = localStorage.getItem('nexview-sessions');
+            if (savedSessions) {
+                try {
+                    const parsedSessions = JSON.parse(savedSessions);
+                    if (Array.isArray(parsedSessions)) {
+                        setSessions(parsedSessions);
+                    } else {
+                        setSessions([]);
+                    }
+                } catch (error) {
+                    console.error("Error parsing sessions:", error);
+                    setSessions([]);
+                }
+            }
+        }
+
         loadUserData();
+        loadSessions();
     }, []);
 
-    // If data is still loading, show a loading state
     if (isLoading) {
         return (
             <div className="container mx-auto py-8 px-4 flex items-center justify-center min-h-[50vh]">
@@ -299,7 +318,7 @@ export default function ProfilePage() {
                                 <Calendar
                                     mode="multiple"
                                     selected={streakDates}
-                                    
+
                                     disabled={(date) => date > new Date()}
                                 />
                             ) : (
@@ -359,6 +378,16 @@ export default function ProfilePage() {
                     </Card>
                 </TabsContent>
             </Tabs>
+            <FloatingNav
+                activeRoute="profile"
+                sessions={sessions}
+                showSearch={false} // Adjust based on your needs
+                searchQuery=""
+                onSearchQueryChange={() => { }}
+                onSearchSubmit={() => { }}
+                setShowSearch={() => { }}
+                onCreateSessionClick={() => console.log("Create session clicked")} // Replace with your logic
+            />
         </div>
     );
 }

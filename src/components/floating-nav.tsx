@@ -22,7 +22,7 @@ interface Session {
 }
 
 interface FloatingNavProps {
-  activeRoute: 'home' | 'saved' | 'history' | 'likes';
+  activeRoute: 'home' | 'saved' | 'history' | 'likes' | 'profile';
   sessions?: Session[];
   showSearch?: boolean;
   searchQuery?: string;

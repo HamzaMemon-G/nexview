@@ -7,7 +7,7 @@ import { ModeToggle } from "@/components/modetoggle";
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Home as HomeIcon, Clock, ThumbsUp, PlaySquare, Menu, Bell, PlusCircle, Calendar, Trash2, Bookmark } from "lucide-react";
+import { Search, Home as HomeIcon, Clock, ThumbsUp, PlaySquare, Menu, Bell, PlusCircle, Calendar, Trash2, Bookmark, LogOut } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -1075,6 +1075,14 @@ export default function Home() {
                   <Bookmark className="h-5 w-5" />
                   <span className="text-xs mt-1">Saved</span>
                 </Link>
+
+                <div
+                  className="flex flex-col items-center px-5 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-transform duration-200 hover:scale-110"
+                  onClick={() => signOut()}
+                >
+                  <LogOut className="h-5 w-5" />
+                  <span className="text-xs mt-1">Logout</span>
+                </div>
 
                 <Link href="/history" className="flex flex-col items-center px-5 py-1">
                   <Clock className="h-5 w-5" />
